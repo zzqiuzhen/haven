@@ -8,7 +8,6 @@ import '../consts.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import 'app_icon_page.dart';
 import 'downloads_page.dart';
 import 'recent_page.dart';
 import 'settings_playback_page.dart';
@@ -103,9 +102,6 @@ class MePage extends StatelessWidget {
               ThemeMode.dark => '深色',
               _ => '跟随系统',
             }, () => _pickTheme(context, app)),
-            _MenuItem(Icons.phone_iphone, C.teal, 'App 图标', '更换桌面图标样式', () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AppIconPage()));
-            }),
             _MenuItem(Icons.info_outline, C.text2, '关于 Haven',
                 'v$kAppVersion · 服务端 ABS ${app.serverInfo?.serverVersion ?? '-'}', () => _about(context, app)),
           ]),
