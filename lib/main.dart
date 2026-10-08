@@ -104,12 +104,15 @@ class _Splash extends StatelessWidget {
   const _Splash();
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       body: Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.graphic_eq, size: 42, color: C.primary),
-          SizedBox(height: 14),
-          Text('Haven', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Image.asset('assets/appicon/master.png', width: 64, height: 64),
+          ),
+          const SizedBox(height: 14),
+          const Text('Haven', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
         ]),
       ),
     );

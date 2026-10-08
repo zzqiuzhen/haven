@@ -20,6 +20,7 @@ class CacheTask {
   double received = 0;
   double total = 0;
   String? error;
+  bool retried = false;
   double get progress => total > 0 ? (received / total).clamp(0, 1) : 0;
 }
 
@@ -112,9 +113,18 @@ class CacheManager extends ChangeNotifier {
         _sizes.remove(t.bookId);
         notifyListeners();
       } catch (e) {
-        t.state = 'failed';
-        t.error = '$e';
-        notifyListeners();
+        if (!t.retried) {
+          // 失败自动重试一次（3 秒后重新排队）
+          t.retried = true;
+          t.state = 'queued';
+          _queue.add(k);
+          notifyListeners();
+          await Future.delayed(const Duration(seconds: 3));
+        } else {
+          t.state = 'failed';
+          t.error = '$e';
+          notifyListeners();
+        }
       }
     }
     _working = false;

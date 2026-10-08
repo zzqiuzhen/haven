@@ -8,6 +8,10 @@ import 'package:dio/dio.dart';
 import 'consts.dart';
 import 'models.dart';
 
+/// 全局共享的 API 实例（供无法访问 Provider 的组件使用，如封面组件；
+/// 由 AppState 在构造 / 切换服务器 / 开发注入时更新）
+Api? sharedApi;
+
 class ApiException implements Exception {
   final int? statusCode;
   final String message;

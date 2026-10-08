@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 
+import '../cache_manager.dart';
 import '../player_engine.dart';
 import '../theme.dart';
 import '../util.dart';
@@ -50,7 +51,19 @@ class _PlayerPageState extends State<PlayerPage> {
     final track = engine.track;
     final settings = engine.settings;
     final w = MediaQuery.of(context).size.width;
-    final sliderValue = _dragging ? _dragValue : engine.absolute.clamp(0.0, engine.duration <= 0 ? 1.0 : engine.duration);
+    // 进度条按“当前章节”范围显示（不再显示全书 20+ 小时总时长）
+    final chapStart = track?.startOffset ?? 0;
+    final chapDur = (track?.duration ?? 0) > 0 ? track!.duration : engine.duration;
+    final chapPos = _dragging
+        ? _dragValue
+        : (engine.absolute - chapStart).clamp(0.0, chapDur <= 0 ? 1.0 : chapDur).toDouble();
+    final chapBuf = chapDur <= 0
+        ? 0.0
+        : ((engine.bufferedAbsolute - chapStart) / chapDur).clamp(0.0, 1.0).toDouble();
+    final cacheMgr = context.watch<CacheManager>();
+    final cacheActive = cacheMgr.tasks
+        .where((t) => t.bookId == item.id && (t.state == 'queued' || t.state == 'downloading'))
+        .length;
     final buffering = engine.player.processingState == ProcessingState.buffering || engine.loading;
 
     return Scaffold(
@@ -119,6 +132,30 @@ class _PlayerPageState extends State<PlayerPage> {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12.5, color: C.text2),
                           ),
+                          if (cacheActive > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.downloading, size: 13, color: C.teal),
+                                  const SizedBox(width: 4),
+                                  Text('自动缓存中 · 剩余 $cacheActive 章', style: const TextStyle(fontSize: 11, color: C.teal)),
+                                ],
+                              ),
+                            )
+                          else if (track != null && track.ino.isNotEmpty && cacheMgr.hasMark(item.id, track.ino))
+                            const Padding(
+                              padding: EdgeInsets.only(top: 6),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle, size: 13, color: C.teal),
+                                  SizedBox(width: 4),
+                                  Text('本章已缓存 · 本地秒开', style: TextStyle(fontSize: 11, color: C.teal)),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -160,8 +197,8 @@ class _PlayerPageState extends State<PlayerPage> {
                           overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
                         ),
                         child: Slider(
-                          value: sliderValue.isNaN ? 0 : sliderValue,
-                          max: engine.duration <= 0 ? 1 : engine.duration,
+                          value: chapPos.isNaN ? 0 : chapPos,
+                          max: chapDur <= 0 ? 1 : chapDur,
                           onChangeStart: (v) => setState(() {
                             _dragging = true;
                             _dragValue = v;
@@ -169,18 +206,18 @@ class _PlayerPageState extends State<PlayerPage> {
                           onChanged: (v) => setState(() => _dragValue = v),
                           onChangeEnd: (v) {
                             setState(() => _dragging = false);
-                            engine.seekAbsolute(v);
+                            engine.seekAbsolute(chapStart + v);
                           },
                         ),
                       ),
                       SizedBox(
                         height: 3,
-                        child: ProgressLine(engine.bufferedFraction, height: 3, color: dark ? Colors.white24 : Colors.black12),
+                        child: ProgressLine(chapBuf, height: 3, color: dark ? Colors.white24 : Colors.black12),
                       ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Text(fmtDur(sliderValue), style: TS.mini.copyWith(fontSize: 12)),
+                          Text(fmtDur(chapPos), style: TS.mini.copyWith(fontSize: 12)),
                           const Spacer(),
                           GestureDetector(
                             onTap: () => _addBookmark(context, engine),
@@ -191,7 +228,7 @@ class _PlayerPageState extends State<PlayerPage> {
                             ]),
                           ),
                           const Spacer(),
-                          Text(fmtDur(engine.duration), style: TS.mini.copyWith(fontSize: 12)),
+                          Text(fmtDur(chapDur), style: TS.mini.copyWith(fontSize: 12)),
                         ],
                       ),
                     ],

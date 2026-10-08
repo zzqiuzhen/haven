@@ -19,6 +19,7 @@ class AppState extends ChangeNotifier {
     required this.engine,
   }) {
     engine.owner = this;
+    sharedApi = api;
   }
 
   Api api;
@@ -60,6 +61,7 @@ class AppState extends ChangeNotifier {
         api = Api(devServer);
         engine.api = api;
         cache.setApi(api);
+        sharedApi = api;
       }
       api.token = devToken;
       try {
@@ -97,6 +99,7 @@ class AppState extends ChangeNotifier {
       api = Api(server);
       engine.api = api;
       cache.setApi(api);
+      sharedApi = api;
     }
     final u = await api.login(username, password);
     me = u;

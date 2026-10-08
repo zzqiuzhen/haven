@@ -55,18 +55,9 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
-                child: Container(
-                  width: 84,
-                  height: 84,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF1E2C4C), Color(0xFF0B1220)],
-                    ),
-                  ),
-                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 46),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: Image.asset('assets/appicon/master.png', width: 84, height: 84),
                 ),
               ),
               const SizedBox(height: 20),

@@ -56,11 +56,14 @@ class HavenCover extends StatelessWidget {
       ),
     );
     if (itemId == null || itemId!.isEmpty) return ph;
+    final a = api ?? sharedApi;
+    final url = a?.coverUrl(itemId!) ?? '';
+    if (url.isEmpty) return ph;
     return ClipRRect(
       borderRadius: br,
       child: CachedNetworkImage(
-        imageUrl: api?.coverUrl(itemId!) ?? '',
-        httpHeaders: api?.authHeaders ?? const {},
+        imageUrl: url,
+        httpHeaders: a?.authHeaders ?? const {},
         width: w,
         height: h,
         fit: BoxFit.cover,

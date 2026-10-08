@@ -487,9 +487,11 @@ class PlayerEngine extends ChangeNotifier {
   void _warmAhead() {
     final it = item;
     if (it == null) return;
+    final whole = settings.autoCacheWholeBook;
     final nextN = settings.autoCacheNext.clamp(0, 10);
-    if (nextN == 0) return;
-    for (int i = index + 1; i <= min(index + nextN, tracks.length - 1); i++) {
+    if (!whole && nextN == 0) return;
+    final last = whole ? tracks.length - 1 : min(index + nextN, tracks.length - 1);
+    for (int i = index + 1; i <= last; i++) {
       final nt = tracks[i];
       if (nt.ino.isEmpty) continue;
       unawaited(warmTrack(i));

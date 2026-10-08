@@ -59,7 +59,22 @@ class _PlaybackSettingsPageState extends State<PlaybackSettingsPage> {
             _chips([15, 30, 60, 120], s.syncInterval, (v) => setState(() => s.syncInterval = v), '%ds'),
             const SizedBox(height: 10),
             _rowTitle('自动缓存后续章节', s.autoCacheNext == 0 ? '关闭' : '${s.autoCacheNext} 章'),
-            _chips([0, 1, 2, 3, 5], s.autoCacheNext, (v) => setState(() => s.autoCacheNext = v), '%d'),
+            _chips([0, 1, 2, 3, 5, 10, 20], s.autoCacheNext, (v) => setState(() => s.autoCacheNext = v), '%d'),
+            const SizedBox(height: 6),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('自动缓存整本', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              subtitle: const Text('边听边把当前章之后的全部章节缓存到本地（占存储，建议 Wi-Fi 下使用）', style: TextStyle(fontSize: 12, color: C.text2)),
+              value: s.autoCacheWholeBook,
+              activeThumbColor: C.primary,
+              onChanged: (v) => setState(() => s.autoCacheWholeBook = v),
+            ),
+            const Divider(height: 20),
+            const Text(
+              '已缓存的章节播放时直接读取本地文件，不再请求 302 直链，断网也能听；'
+              '单本书的缓存可以在「下载与缓存」里查看和删除。',
+              style: TextStyle(fontSize: 11.5, color: C.text2, height: 1.5),
+            ),
           ]),
           const SizedBox(height: 12),
           _card([

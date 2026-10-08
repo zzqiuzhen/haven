@@ -42,6 +42,10 @@ class Settings {
   int get autoCacheNext => _sp.getInt('auto_cache_next') ?? PlayDefaults.autoCacheNext;
   set autoCacheNext(int v) => _sp.setInt('auto_cache_next', v);
 
+  /// 自动缓存整本（当前章之后的全部章节）
+  bool get autoCacheWholeBook => _sp.getBool('auto_cache_whole') ?? false;
+  set autoCacheWholeBook(bool v) => _sp.setBool('auto_cache_whole', v);
+
   int get skipIntro => _sp.getInt('skip_intro') ?? PlayDefaults.skipIntro;
   set skipIntro(int v) => _sp.setInt('skip_intro', v);
 
