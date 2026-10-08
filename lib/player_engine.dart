@@ -49,6 +49,7 @@ class PlayerEngine extends ChangeNotifier {
   bool _usedFallback = false;
   Uri? _artUri;
   DateTime _lastNotify = DateTime.now();
+  DateTime _lastMeRefresh = DateTime.fromMillisecondsSinceEpoch(0);
 
   SleepMode sleepMode = SleepMode.off;
   DateTime? _sleepUntil;
@@ -84,6 +85,36 @@ class PlayerEngine extends ChangeNotifier {
 
   /// 供 UI 触发刷新（替代外部直接调用 notifyListeners）
   void touch() => notifyListeners();
+
+  /// 冷启动恢复：把上次播放的书加载进引擎（不自动播放），让迷你播放器/继续收听立即可用
+  Future<void> restoreLast() async {
+    if (hasBook) return; // 已有书在播/已加载，不覆盖
+    final m = owner?.me;
+    if (m == null) return;
+    // 取最近有进度且未完成的书
+    final ps = m.mediaProgress
+        .where((p) => !p.hideFromContinue && !p.isFinished && p.currentTime > 1)
+        .toList();
+    if (ps.isEmpty) return;
+    ps.sort((a, b) => (b.updatedAt?.millisecondsSinceEpoch ?? 0)
+        .compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0));
+    final pg = ps.first;
+    final id = pg.libraryItemId;
+    if (id == null || id.isEmpty) return;
+    try {
+      final d = await _loadDetail(id);
+      final it = await owner!.ensureItem(id);
+      item = it;
+      detail = d;
+      index = _trackIndexForAbsolute(pg.currentTime);
+      _absolute = pg.currentTime;
+      loading = false;
+      error = null;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('restoreLast failed: $e');
+    }
+  }
 
   void _init() {
     player.positionStream.listen((pos) {
@@ -310,6 +341,16 @@ class PlayerEngine extends ChangeNotifier {
       await player.pause();
       unawaited(syncNow());
     } else {
+      // 恢复态（item 已加载但还没起播）：需要真正 open 起播
+      if (session == null && player.processingState == ProcessingState.idle) {
+        final it = item;
+        if (it != null) {
+          final abs = _absolute;
+          await stopAndClose(closeSession: false);
+          await open(it, startAt: abs, autoplay: true);
+          return;
+        }
+      }
       unawaited(player.play());
     }
   }
@@ -430,9 +471,25 @@ class PlayerEngine extends ChangeNotifier {
       await api.syncSession(s.id, currentTime: abs, timeListened: listen, duration: duration);
       _unsynced = 0;
       _lastSyncedAbs = abs;
+      // 节流刷新 me（每 30 秒），让 progressOf / continueList 拿到最新进度
+      if (DateTime.now().difference(_lastMeRefresh).inSeconds > 30) {
+        _lastMeRefresh = DateTime.now();
+        unawaited(_refreshMe());
+      }
     } catch (e) {
       debugPrint('sync failed: $e');
     }
+  }
+
+  Future<void> _refreshMe() async {
+    try {
+      final m = await api.me();
+      final o = owner;
+      if (o != null) {
+        o.me = m;
+        o.notifyListeners();
+      }
+    } catch (_) {}
   }
 
   Future<void> stopAndClose({bool closeSession = true}) async {
@@ -470,6 +527,8 @@ class PlayerEngine extends ChangeNotifier {
     loading = false;
     _closing = false;
     notifyListeners();
+    // 关闭后刷新进度列表（继续收听/迷你播放器）
+    unawaited(_refreshMe());
   }
 
   void _ensureListenTimer() {

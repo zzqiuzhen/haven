@@ -315,6 +315,15 @@ class MediaProgress {
     this.updatedAt,
     this.hideFromContinue = false,
   });
+  static DateTime? _parseUpdated(Map j) {
+    // API 返回 lastUpdate 为 epoch 毫秒（数字），updatedAt 为 ISO 字符串
+    final lu = j['lastUpdate'];
+    if (lu is num && lu > 0) return DateTime.fromMillisecondsSinceEpoch(lu.toInt());
+    final ua = j['updatedAt'];
+    if (ua is num && ua > 0) return DateTime.fromMillisecondsSinceEpoch(ua.toInt());
+    return DateTime.tryParse(_s(ua));
+  }
+
   factory MediaProgress.fromJson(Map j) => MediaProgress(
         libraryItemId: j['libraryItemId']?.toString(),
         mediaItemId: j['mediaItemId']?.toString(),
@@ -322,7 +331,7 @@ class MediaProgress {
         duration: toD(j['duration']),
         progress: toD(j['progress']),
         isFinished: j['isFinished'] == true,
-        updatedAt: DateTime.tryParse(_s(j['updatedAt'])),
+        updatedAt: _parseUpdated(j),
         hideFromContinue: j['hideFromContinueListening'] == true,
       );
 }

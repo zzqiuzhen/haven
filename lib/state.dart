@@ -170,6 +170,8 @@ class AppState extends ChangeNotifier {
     }
     loadingHome = false;
     notifyListeners();
+    // 冷启动自动恢复上次播放（不自动播放，仅加载到引擎 → 迷你播放器出现）
+    unawaited(engine.restoreLast());
   }
 
   Future<BookDetail> detail(String id) async {
