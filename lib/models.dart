@@ -271,7 +271,7 @@ class PlaySession {
     required this.playMethod,
     required this.tracks,
   });
-  bool get isTranscode => playMethod == 1;
+  bool get isTranscode => playMethod == 1 || playMethod == 2;
 
   factory PlaySession.fromJson(Map j) {
     final rawTracks = ((j['audioTracks'] as List?) ?? const []);

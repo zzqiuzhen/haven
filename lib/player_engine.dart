@@ -217,10 +217,12 @@ class PlayerEngine extends ChangeNotifier {
 
   Future<BookDetail> _loadDetail(String id) async {
     if (detail != null && detail!.id == id) return detail!;
-    final cached = owner?.detailCache[id];
+    final o = owner;
+    if (o != null) return o.detail(id); // 走 state 的磁盘缓存（冷启动秒开）
+    final cached = o?.detailCache[id];
     if (cached != null) return cached;
     final d = await api.itemDetail(id);
-    owner?.detailCache[id] = d;
+    o?.detailCache[id] = d;
     return d;
   }
 
@@ -228,7 +230,11 @@ class PlayerEngine extends ChangeNotifier {
     if (tracks.isEmpty) return;
     error = null;
     if (isTranscode) {
-      if (session == null) return; // 转码需先有会话拿 HLS 地址
+      if (session == null) {
+        error = '转码会话创建失败，请检查网络后重试';
+        notifyListeners();
+        return;
+      }
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(_hlsUrl()), headers: api.authHeaders),
       );
@@ -265,7 +271,9 @@ class PlayerEngine extends ChangeNotifier {
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false}) {
     final t = tracks[ti];
     final ext = t.ext.isNotEmpty ? t.ext : '.mp3';
-    final local = cache.completePath(item!.id, t.ino, ext);
+    // WMA/转码书：缓存下载的是服务端代理的音频流（mp3/aac），不是 .strm 文本
+    final cacheExt = codecNeedsTranscode(t.codec, t.mimeType) ? '.mp3' : ext;
+    final local = cache.completePath(item!.id, t.ino, cacheExt);
     if (local != null) return (url: Uri.file(local).toString(), headers: const {});
     if (!forceProxy && settings.directMode && t.path.startsWith('http')) {
       return (url: t.path, headers: const {});
@@ -634,9 +642,14 @@ class PlayerEngine extends ChangeNotifier {
       final nt = tracks[i];
       if (nt.ino.isEmpty) continue;
       unawaited(warmTrack(i));
-      final ext = nt.ext.isNotEmpty ? nt.ext : '.mp3';
+      // WMA/转码书：缓存下载的是服务端代理的音频流（mp3/aac），不是 .strm 文本
+      final needsTrans = codecNeedsTranscode(nt.codec, nt.mimeType);
+      final ext = needsTrans ? '.mp3' : (nt.ext.isNotEmpty ? nt.ext : '.mp3');
       String url;
-      if (settings.directMode && nt.path.startsWith('http')) {
+      if (needsTrans && session != null) {
+        // 转码书缓存：用 HLS 分片（服务端已转码为 aac/mp4）
+        url = api.fullTrackUrl('/hls/${session!.id}/output.m3u8');
+      } else if (settings.directMode && nt.path.startsWith('http')) {
         url = nt.path;
       } else if (nt.contentUrl != null && nt.contentUrl!.isNotEmpty) {
         url = api.fullTrackUrl(nt.contentUrl!);
