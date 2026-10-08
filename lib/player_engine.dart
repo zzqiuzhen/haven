@@ -79,7 +79,7 @@ class PlayerEngine extends ChangeNotifier {
   }
 
   double get bufferedFraction => duration > 0 ? (bufferedAbsolute / duration).clamp(0.0, 1.0).toDouble() : 0.0;
-  bool get hasBook => session != null && item != null;
+  bool get hasBook => item != null;
   String get bookId => item?.id ?? '';
 
   /// 供 UI 触发刷新（替代外部直接调用 notifyListeners）
@@ -112,7 +112,7 @@ class PlayerEngine extends ChangeNotifier {
   /// 打开一本书并起播。[startAt] 为全书绝对秒数（续播点）
   Future<void> open(LibItem it, {double startAt = 0, bool autoplay = true}) async {
     if (session != null && item?.id == it.id) {
-      if (autoplay) await player.play();
+      if (autoplay) unawaited(player.play());
       return;
     }
     await stopAndClose(closeSession: true);
@@ -127,22 +127,21 @@ class PlayerEngine extends ChangeNotifier {
     notifyListeners();
     try {
       detail = await _loadDetail(it.id);
-      final needTranscode = detail!.tracks.any((t) => codecNeedsTranscode(t.codec, t.mimeType));
-      session = await api.startPlay(it.id, forceTranscode: needTranscode);
-      if (!session!.isTranscode) {
-        for (final st in session!.tracks) {
-          final di = detail!.tracks.indexWhere((d) => (d.ino.isNotEmpty && d.ino == st.ino) || d.index == st.index);
-          if (di >= 0) {
-            detail!.tracks[di].contentUrl = st.contentUrl;
-          }
-        }
-      }
       var start = startAt;
-      if (duration > 0 && start >= duration - 20) start = 0;
+      if (detail != null && detail!.duration > 0 && start >= detail!.duration - 20) start = 0;
       final sp = settings.speedFor(it.id);
       await player.setSpeed(sp);
-      await _startAt(start, autoplay: autoplay);
-      _startSyncLoop();
+      final needTranscode = detail!.tracks.any((t) => codecNeedsTranscode(t.codec, t.mimeType));
+      if (needTranscode) {
+        // 转码书必须先建会话拿 HLS 地址
+        session = await api.startPlay(it.id, forceTranscode: true);
+        await _startAt(start, autoplay: autoplay);
+        _startSyncLoop();
+      } else {
+        // 直连/代理书：立即起播（缓存命中秒开，无需等会话），会话后台创建
+        await _startAt(start, autoplay: autoplay);
+        unawaited(_ensureSession());
+      }
       unawaited(_ensureArt());
     } catch (e) {
       error = '$e';
@@ -150,6 +149,28 @@ class PlayerEngine extends ChangeNotifier {
     }
     loading = false;
     notifyListeners();
+  }
+
+  /// 后台补建播放会话（用于进度同步与后续章节 contentUrl）；失败不阻塞播放
+  Future<void> _ensureSession() async {
+    final it = item;
+    if (it == null || session != null) return;
+    try {
+      final s = await api.startPlay(it.id, forceTranscode: false);
+      if (item?.id != it.id) return;
+      session = s;
+      if (!s.isTranscode && detail != null) {
+        for (final st in s.tracks) {
+          final di = detail!.tracks.indexWhere((d) => (d.ino.isNotEmpty && d.ino == st.ino) || d.index == st.index);
+          if (di >= 0) {
+            detail!.tracks[di].contentUrl = st.contentUrl;
+          }
+        }
+      }
+      _startSyncLoop();
+    } catch (e) {
+      debugPrint('ensureSession failed: $e');
+    }
   }
 
   Future<BookDetail> _loadDetail(String id) async {
@@ -208,6 +229,9 @@ class PlayerEngine extends ChangeNotifier {
     }
     if (t.contentUrl != null && t.contentUrl!.isNotEmpty) {
       return (url: api.fullTrackUrl(t.contentUrl!), headers: api.authHeaders);
+    }
+    if (t.ino.isNotEmpty && item != null) {
+      return (url: api.fileUrlFor(item!.id, t.ino), headers: api.authHeaders);
     }
     return (url: t.path, headers: const {});
   }

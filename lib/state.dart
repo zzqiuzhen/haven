@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -20,6 +21,7 @@ class AppState extends ChangeNotifier {
   }) {
     engine.owner = this;
     sharedApi = api;
+    cache.maxCacheGB = settings.maxCacheGB;
   }
 
   Api api;
@@ -173,9 +175,36 @@ class AppState extends ChangeNotifier {
   Future<BookDetail> detail(String id) async {
     final c = detailCache[id];
     if (c != null) return c;
-    final d = await api.itemDetail(id);
+    // 磁盘缓存优先（冷启动/离线秒开），后台再刷新
+    final diskRaw = cache.readDetailJson(id);
+    if (diskRaw != null) {
+      try {
+        final d = BookDetail.fromJson(jsonDecode(diskRaw) as Map<String, dynamic>);
+        detailCache[id] = d;
+        unawaited(_refreshDetail(id));
+        return d;
+      } catch (_) {}
+    }
+    final raw = await api.itemDetailRaw(id);
+    final d = BookDetail.fromJson(raw);
     detailCache[id] = d;
+    unawaited(cache.writeDetailJson(id, jsonEncode(raw)));
     return d;
+  }
+
+  Future<void> _refreshDetail(String id) async {
+    try {
+      final raw = await api.itemDetailRaw(id);
+      final d = BookDetail.fromJson(raw);
+      detailCache[id] = d;
+      await cache.writeDetailJson(id, jsonEncode(raw));
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// 播放设置里的缓存上限变更后调用，同步给 CacheManager
+  void applyCacheLimit() {
+    cache.maxCacheGB = settings.maxCacheGB;
   }
 
   Future<LibItem> ensureItem(String id) async {

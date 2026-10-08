@@ -1,6 +1,7 @@
 /// 章节音频磁盘缓存 / 预取管理器
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -35,6 +36,9 @@ class CacheManager extends ChangeNotifier {
   final List<String> _queue = [];
   bool _working = false;
   final Map<String, int> _sizes = {}; // bookId -> bytes
+  final Map<String, Set<String>> _cachedInos = {}; // bookId -> 已缓存章节 ino 集合
+  final Set<String> _scannedBooks = {}; // 已扫描过目录的 bookId
+  int maxCacheGB = 10; // 缓存总大小上限（GB，0=不限）；由 AppState 同步
 
   Future<void> init() async {
     if (kIsWeb) return;
@@ -111,7 +115,9 @@ class CacheManager extends ChangeNotifier {
         await _doneFile(t.bookId, t.ino).writeAsString(DateTime.now().toIso8601String());
         t.state = 'done';
         _sizes.remove(t.bookId);
+        _cachedInos.putIfAbsent(t.bookId, () => <String>{}).add(t.ino);
         notifyListeners();
+        unawaited(_enforceLimit());
       } catch (e) {
         if (!t.retried) {
           // 失败自动重试一次（3 秒后重新排队）
@@ -187,6 +193,95 @@ class CacheManager extends ChangeNotifier {
     _sizes.clear();
     notifyListeners();
   }
+
+  /// 某本书已缓存章节的 ino 集合（首次访问时扫描目录一次）
+  Set<String> cachedInosFor(String bookId) {
+    if (_root == null) return const {};
+    if (!_scannedBooks.contains(bookId)) {
+      _scannedBooks.add(bookId);
+      final set = <String>{};
+      try {
+        final dir = Directory(p.join(_root!.path, bookId));
+        if (dir.existsSync()) {
+          for (final f in dir.listSync()) {
+            if (f is File && f.path.endsWith('.done')) {
+              set.add(p.basename(f.path).replaceAll(RegExp(r'\.done$'), ''));
+            }
+          }
+        }
+      } catch (_) {}
+      _cachedInos[bookId] = set;
+    }
+    return _cachedInos[bookId] ?? const {};
+  }
+
+  /// 全部缓存占用字节数（不含详情缓存）
+  Future<int> totalSize() async {
+    if (_root == null) return 0;
+    var sum = 0;
+    await for (final d in _root!.list()) {
+      if (d is! Directory || p.basename(d.path) == '_details') continue;
+      await for (final f in d.list()) {
+        if (f is File && !f.path.endsWith('.done') && !f.path.endsWith('.part')) {
+          sum += await f.length();
+        }
+      }
+    }
+    return sum;
+  }
+
+  /// 超过总量上限时，按缓存时间从旧到新删除，直到回落到上限内
+  Future<void> _enforceLimit() async {
+    if (_root == null) return;
+    final maxBytes = maxCacheGB <= 0 ? 0 : maxCacheGB * 1024 * 1024 * 1024;
+    if (maxBytes <= 0) return;
+    var total = await totalSize();
+    if (total <= maxBytes) return;
+    final entries = <({String path, int size, int mtime})>[];
+    await for (final d in _root!.list()) {
+      if (d is! Directory || p.basename(d.path) == '_details') continue;
+      await for (final f in d.list()) {
+        if (f is! File || f.path.endsWith('.done') || f.path.endsWith('.part')) continue;
+        final done = File('${f.path}.done');
+        if (!done.existsSync()) continue;
+        final st = f.statSync();
+        entries.add((path: f.path, size: st.size, mtime: st.modified.millisecondsSinceEpoch));
+      }
+    }
+    entries.sort((a, b) => a.mtime.compareTo(b.mtime));
+    for (final e in entries) {
+      if (total <= maxBytes) break;
+      try {
+        await File(e.path).delete();
+        final done = File('${e.path}.done');
+        if (done.existsSync()) await done.delete();
+        total -= e.size;
+      } catch (_) {}
+    }
+    notifyListeners();
+  }
+
+  /// 书籍详情 JSON 落盘缓存（冷启动秒开用）
+  String? readDetailJson(String id) {
+    final f = _detailFile(id);
+    if (f == null || !f.existsSync()) return null;
+    try {
+      return f.readAsStringSync();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> writeDetailJson(String id, String json) async {
+    final f = _detailFile(id);
+    if (f == null) return;
+    try {
+      await f.parent.create(recursive: true);
+      await f.writeAsString(json);
+    } catch (_) {}
+  }
+
+  File? _detailFile(String id) => _root == null ? null : File(p.join(_root!.path, '_details', '$id.json'));
 
   String humanSize(int bytes) => fmtBytes(bytes.toDouble());
 }

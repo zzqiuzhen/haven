@@ -61,7 +61,14 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Center(child: Text('Haven', style: TS.h1)),
+              Center(
+                child: RichText(
+                  text: const TextSpan(children: [
+                    TextSpan(text: 'Ha', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF1C1C1E))),
+                    TextSpan(text: 'ven', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFFC6A15B))),
+                  ]),
+                ),
+              ),
               const SizedBox(height: 6),
               const Center(child: Text('自托管有声书 · 连接你的 Audiobookshelf', style: TS.sub)),
               const SizedBox(height: 36),

@@ -69,6 +69,25 @@ class _PlaybackSettingsPageState extends State<PlaybackSettingsPage> {
               activeThumbColor: C.primary,
               onChanged: (v) => setState(() => s.autoCacheWholeBook = v),
             ),
+            const SizedBox(height: 10),
+            _rowTitle('缓存总大小上限', s.maxCacheGB == 0 ? '不限' : '${s.maxCacheGB} GB'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final v in [0, 1, 2, 5, 10, 20, 50])
+                  ChoiceChip(
+                    label: Text(v == 0 ? '不限' : '$v GB'),
+                    selected: s.maxCacheGB == v,
+                    onSelected: (_) {
+                      setState(() => s.maxCacheGB = v);
+                      app.applyCacheLimit();
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text('超过上限会自动删除最早缓存的章节（按缓存时间从旧到新）', style: TextStyle(fontSize: 11.5, color: C.text2)),
             const Divider(height: 20),
             const Text(
               '已缓存的章节播放时直接读取本地文件，不再请求 302 直链，断网也能听；'

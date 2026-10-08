@@ -9,6 +9,7 @@ import 'audio_handler.dart';
 import 'cache_manager.dart';
 import 'consts.dart';
 import 'pages/login_page.dart';
+import 'pages/player_page.dart';
 import 'pages/shell.dart';
 import 'player_engine.dart';
 import 'settings.dart';
@@ -46,6 +47,8 @@ Future<void> main() async {
   runApp(HavenApp(app: app));
 }
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 class HavenApp extends StatefulWidget {
   const HavenApp({super.key, required this.app});
   final AppState app;
@@ -54,6 +57,8 @@ class HavenApp extends StatefulWidget {
 }
 
 class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
+  bool _wasBackgrounded = false;
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +70,18 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       widget.app.engine.syncNow();
+      _wasBackgrounded = true;
+    } else if (state == AppLifecycleState.resumed) {
+      final fromBg = _wasBackgrounded;
+      _wasBackgrounded = false;
+      // 从锁屏/后台返回时直接进入播放器
+      if (fromBg && widget.app.engine.hasBook && !playerPageOpen) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (navigatorKey.currentState != null && !playerPageOpen) {
+            navigatorKey.currentState!.push(PlayerPage.route());
+          }
+        });
+      }
     }
   }
 
@@ -87,6 +104,7 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
         listenable: app,
         builder: (context, _) => MaterialApp(
           title: kAppName,
+          navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: HavenTheme.of(Brightness.light),
           darkTheme: HavenTheme.of(Brightness.dark),

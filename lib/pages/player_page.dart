@@ -14,6 +14,9 @@ import '../util.dart';
 import '../widgets/common.dart';
 import 'book_page.dart' show BookPage;
 
+/// 播放器页是否处于打开状态（供锁屏返回时判断是否直达播放器）
+bool playerPageOpen = false;
+
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key});
 
@@ -34,6 +37,18 @@ class PlayerPage extends StatefulWidget {
 class _PlayerPageState extends State<PlayerPage> {
   bool _dragging = false;
   double _dragValue = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    playerPageOpen = true;
+  }
+
+  @override
+  void dispose() {
+    playerPageOpen = false;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +77,22 @@ class _PlayerPageState extends State<PlayerPage> {
         .where((t) => t.bookId == item.id && (t.state == 'queued' || t.state == 'downloading'))
         .length;
     final buffering = engine.player.processingState == ProcessingState.buffering || engine.loading;
+
+    final cachedSet = cacheMgr.cachedInosFor(item.id);
+    var maxCachedIdx = -1;
+    for (int i = 0; i < engine.tracks.length; i++) {
+      if (cachedSet.contains(engine.tracks[i].ino)) maxCachedIdx = i;
+    }
+    final cachedCount = maxCachedIdx >= 0 ? engine.tracks[maxCachedIdx].index : 0;
+    final curCached = track != null && track.ino.isNotEmpty && cachedSet.contains(track.ino);
+    String? cacheLabel;
+    if (cacheActive > 0) {
+      cacheLabel = cachedCount > 0 ? '自动缓存中 · 已缓存到第 $cachedCount 集' : '自动缓存中 · $cacheActive 章';
+    } else if (cachedCount > 0) {
+      cacheLabel = '已缓存到第 $cachedCount 集';
+    } else if (curCached) {
+      cacheLabel = '本章已缓存 · 本地秒开';
+    }
 
     return Scaffold(
       body: Stack(
@@ -113,12 +144,15 @@ class _PlayerPageState extends State<PlayerPage> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 30, offset: const Offset(0, 12))],
+                          GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 30, offset: const Offset(0, 12))],
+                              ),
+                              child: HavenCover(item.id, item.meta.title, size: w.clamp(0, 430) * 0.58, radius: 20),
                             ),
-                            child: HavenCover(item.id, item.meta.title, size: w.clamp(0, 430) * 0.58, radius: 20),
                           ),
                           const SizedBox(height: 22),
                           Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
@@ -129,27 +163,18 @@ class _PlayerPageState extends State<PlayerPage> {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12.5, color: C.text2),
                           ),
-                          if (cacheActive > 0)
+                          if (cacheLabel != null)
                             Padding(
                               padding: const EdgeInsets.only(top: 6),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.downloading, size: 13, color: C.teal),
+                                  Icon(cacheActive > 0 ? Icons.downloading : Icons.check_circle, size: 13, color: C.teal),
                                   const SizedBox(width: 4),
-                                  Text('自动缓存中 · 剩余 $cacheActive 章', style: const TextStyle(fontSize: 11, color: C.teal)),
-                                ],
-                              ),
-                            )
-                          else if (track != null && track.ino.isNotEmpty && cacheMgr.hasMark(item.id, track.ino))
-                            const Padding(
-                              padding: EdgeInsets.only(top: 6),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.check_circle, size: 13, color: C.teal),
-                                  SizedBox(width: 4),
-                                  Text('本章已缓存 · 本地秒开', style: TextStyle(fontSize: 11, color: C.teal)),
+                                  Flexible(
+                                    child: Text(cacheLabel, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 11, color: C.teal)),
+                                  ),
                                 ],
                               ),
                             ),
@@ -175,6 +200,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
                   child: Glass(
                     radius: 26,
+                    highlight: false,
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

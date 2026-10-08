@@ -46,6 +46,10 @@ class Settings {
   bool get autoCacheWholeBook => _sp.getBool('auto_cache_whole') ?? false;
   set autoCacheWholeBook(bool v) => _sp.setBool('auto_cache_whole', v);
 
+  /// 缓存总大小上限（GB；0=不限）。超过后自动删除最早缓存的内容
+  int get maxCacheGB => _sp.getInt('max_cache_gb') ?? PlayDefaults.maxCacheGB;
+  set maxCacheGB(int v) => _sp.setInt('max_cache_gb', v);
+
   int get skipIntro => _sp.getInt('skip_intro') ?? PlayDefaults.skipIntro;
   set skipIntro(int v) => _sp.setInt('skip_intro', v);
 

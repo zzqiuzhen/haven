@@ -157,8 +157,10 @@ class Api {
     return out;
   }
 
-  Future<BookDetail> itemDetail(String id) async =>
-      BookDetail.fromJson(_asMap(await _get('/api/items/$id', query: {'expanded': 1})));
+  Future<Map<String, dynamic>> itemDetailRaw(String id) async =>
+      _asMap(await _get('/api/items/$id', query: {'expanded': 1}));
+
+  Future<BookDetail> itemDetail(String id) async => BookDetail.fromJson(await itemDetailRaw(id));
 
   // ---------------- 播放会话 ----------------
 
