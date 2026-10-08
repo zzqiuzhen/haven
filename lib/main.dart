@@ -78,9 +78,10 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
       final since = _hiddenAt;
       _hiddenAt = null;
       final awaySec = since == null ? 0 : DateTime.now().difference(since).inSeconds;
-      // 从锁屏/后台回来（离开超过 2 秒）且有正在播放的书、且不在播放页 → 直达播放器
-      // （锁屏点“正在播放”卡片会唤起 App，此处保证直接落到播放页；带重试以适配导航就绪时机）
-      if (awaySec >= 2 && widget.app.engine.hasBook && widget.app.loggedIn && !playerPageOpen) {
+      // 从锁屏/后台回来且有正在播放的书、且不在播放页 → 直达播放器
+      // （锁屏点“正在播放”卡片会唤起 App，awaySec 可能很短；带重试以适配导航就绪时机）
+      // 只在真正播放中才直达，避免手动切回时弹播放页
+      if (widget.app.engine.hasBook && widget.app.loggedIn && !playerPageOpen && widget.app.engine.playing) {
         _openPlayerSoon();
       }
     }

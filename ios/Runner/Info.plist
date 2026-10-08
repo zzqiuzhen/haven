@@ -18,7 +18,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconBlue</string>
+					<string>AppIconBlue-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconBlue</string>
@@ -27,7 +27,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconBlueDark</string>
+					<string>AppIconBlueDark-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconBlueDark</string>
@@ -36,7 +36,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconBright</string>
+					<string>AppIconBright-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconBright</string>
@@ -45,7 +45,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconBrightDark</string>
+					<string>AppIconBrightDark-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconBrightDark</string>
@@ -54,7 +54,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconDark</string>
+					<string>AppIconDark-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconDark</string>
@@ -63,7 +63,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconDarkDark</string>
+					<string>AppIconDarkDark-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconDarkDark</string>
@@ -72,7 +72,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconDefaultDark</string>
+					<string>AppIconDefaultDark-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconDefaultDark</string>
@@ -81,7 +81,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconFresh</string>
+					<string>AppIconFresh-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconFresh</string>
@@ -90,7 +90,7 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconFreshDark</string>
+					<string>AppIconFreshDark-60x60@2x.png</string>
 				</array>
 				<key>CFBundleIconName</key>
 				<string>AppIconFreshDark</string>
