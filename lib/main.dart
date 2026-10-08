@@ -79,16 +79,24 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
       _hiddenAt = null;
       final awaySec = since == null ? 0 : DateTime.now().difference(since).inSeconds;
       // 从锁屏/后台回来（离开超过 2 秒）且有正在播放的书、且不在播放页 → 直达播放器
-      if (awaySec >= 2 && widget.app.engine.hasBook && !playerPageOpen) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Future.delayed(const Duration(milliseconds: 350), () {
-            if (navigatorKey.currentState != null && !playerPageOpen) {
-              navigatorKey.currentState!.push(PlayerPage.route());
-            }
-          });
-        });
+      // （锁屏点“正在播放”卡片会唤起 App，此处保证直接落到播放页；带重试以适配导航就绪时机）
+      if (awaySec >= 2 && widget.app.engine.hasBook && widget.app.loggedIn && !playerPageOpen) {
+        _openPlayerSoon();
       }
     }
+  }
+
+  /// 回到前台后直达播放页（重试 2 次：引擎/导航就绪时间不确定）
+  void _openPlayerSoon({int attempt = 0}) {
+    Future.delayed(Duration(milliseconds: 450 + attempt * 700), () {
+      if (!mounted || playerPageOpen) return;
+      final nav = navigatorKey.currentState;
+      if (nav == null) {
+        if (attempt < 2) _openPlayerSoon(attempt: attempt + 1);
+        return;
+      }
+      nav.push(PlayerPage.route());
+    });
   }
 
   @override

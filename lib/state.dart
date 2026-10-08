@@ -154,6 +154,8 @@ class AppState extends ChangeNotifier {
       }).catchError((_) {}));
       final m = await api.me();
       me = m;
+      // 冷启动自动恢复上次播放（优先本机位置；不自动播放，仅加载到引擎 → 迷你播放器立即出现）
+      unawaited(engine.restoreLast());
       if (libraries.isNotEmpty) {
         try {
           final loaded = await loadLibrary(libraries.first.id, page: 0, refresh: true);
@@ -184,8 +186,6 @@ class AppState extends ChangeNotifier {
     }
     loadingHome = false;
     notifyListeners();
-    // 冷启动自动恢复上次播放（不自动播放，仅加载到引擎 → 迷你播放器出现）
-    unawaited(engine.restoreLast());
   }
 
   Future<BookDetail> detail(String id) async {
