@@ -3,6 +3,11 @@
 自托管有声书 iOS 客户端 —— 为 **Audiobookshelf + 115 网盘（MoviePilot 302 / strm）** 环境定制。
 界面风格参考 Leelaa Reader，重点优化「打开即听」的起播速度。
 
+## 下载安装（iOS 16+）
+
+- **直接下载 IPA**：[Releases](https://github.com/zzqiuzhen/haven/releases) —— 未签名，需自签安装（Sideloadly / 爱思助手自签，或 TrollStore 直接安装）
+- 也可按下方「构建与安装」从 GitHub Actions 产物或本地自行构建
+
 ## 功能
 
 - 连接任意 Audiobookshelf 服务端（v2.36+ 兼容，支持子路径反代，如 `/audiobookshelf`）
