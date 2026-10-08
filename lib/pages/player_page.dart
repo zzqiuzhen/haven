@@ -1,0 +1,584 @@
+/// 全屏播放器
+library;
+
+import 'dart:ui';
+
+import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:provider/provider.dart';
+
+import '../player_engine.dart';
+import '../theme.dart';
+import '../util.dart';
+import '../widgets/common.dart';
+import 'book_page.dart' show BookPage;
+
+class PlayerPage extends StatefulWidget {
+  const PlayerPage({super.key});
+
+  static Route<void> route() => PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 260),
+        pageBuilder: (_, __, ___) => const PlayerPage(),
+        transitionsBuilder: (_, anim, __, child) => SlideTransition(
+          position: Tween(begin: const Offset(0, 0.06), end: Offset.zero).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: FadeTransition(opacity: anim, child: child),
+        ),
+      );
+
+  @override
+  State<PlayerPage> createState() => _PlayerPageState();
+}
+
+class _PlayerPageState extends State<PlayerPage> {
+  bool _dragging = false;
+  double _dragValue = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final engine = context.watch<PlayerEngine>();
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final item = engine.item;
+
+    if (item == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const EmptyView('当前没有播放中的书籍'),
+      );
+    }
+
+    final track = engine.track;
+    final settings = engine.settings;
+    final w = MediaQuery.of(context).size.width;
+    final sliderValue = _dragging ? _dragValue : engine.absolute.clamp(0.0, engine.duration <= 0 ? 1.0 : engine.duration);
+    final buffering = engine.player.processingState == ProcessingState.buffering || engine.loading;
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          Positioned.fill(child: ColoredBox(color: dark ? C.dBg : C.bg)),
+          Positioned(
+            top: -80,
+            left: -60,
+            right: -60,
+            height: 460,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: dark ? 0.30 : 0.38,
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 64, sigmaY: 64),
+                  child: HavenCover(item.id, item.meta.title, width: w + 120, height: 460, radius: 0),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                // 顶部栏
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                  child: Row(
+                    children: [
+                      _RoundIcon(icon: Icons.keyboard_arrow_down, onTap: () => Navigator.pop(context)),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(track?.title ?? item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: C.text2)),
+                          ],
+                        ),
+                      ),
+                      _RoundIcon(icon: Icons.bookmark_add_outlined, onTap: () => _addBookmark(context, engine)),
+                      const SizedBox(width: 8),
+                      _RoundIcon(icon: Icons.more_horiz, onTap: () => _moreSheet(context, engine)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 44),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 30, offset: const Offset(0, 12))],
+                            ),
+                            child: HavenCover(item.id, item.meta.title, size: w.clamp(0, 430) * 0.58, radius: 20),
+                          ),
+                          const SizedBox(height: 22),
+                          Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${item.meta.authorText}${engine.tracks.isEmpty ? '' : ' · ${engine.index + 1}/${engine.tracks.length}'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12.5, color: C.text2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (engine.error != null)
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: C.red.withValues(alpha: 0.1), borderRadius: R.card),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(engine.error!, style: const TextStyle(color: C.red, fontSize: 12.5))),
+                        TextButton(onPressed: () => engine.playAt(engine.index), child: const Text('重试')),
+                      ],
+                    ),
+                  ),
+                // 进度区
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+                  child: Column(
+                    children: [
+                      if (buffering)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.8)),
+                              const SizedBox(width: 8),
+                              Text('缓冲中…', style: TS.mini.copyWith(fontSize: 11.5)),
+                            ],
+                          ),
+                        ),
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 4,
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.5),
+                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                        ),
+                        child: Slider(
+                          value: sliderValue.isNaN ? 0 : sliderValue,
+                          max: engine.duration <= 0 ? 1 : engine.duration,
+                          onChangeStart: (v) => setState(() {
+                            _dragging = true;
+                            _dragValue = v;
+                          }),
+                          onChanged: (v) => setState(() => _dragValue = v),
+                          onChangeEnd: (v) {
+                            setState(() => _dragging = false);
+                            engine.seekAbsolute(v);
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                        height: 3,
+                        child: ProgressLine(engine.bufferedFraction, height: 3, color: dark ? Colors.white24 : Colors.black12),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text(fmtDur(sliderValue), style: TS.mini.copyWith(fontSize: 12)),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () => _addBookmark(context, engine),
+                            child: const Row(children: [
+                              Icon(Icons.bookmark_add_outlined, size: 14, color: C.text2),
+                              SizedBox(width: 4),
+                              Text('添加书签', style: TextStyle(fontSize: 12, color: C.text2)),
+                            ]),
+                          ),
+                          const Spacer(),
+                          Text(fmtDur(engine.duration), style: TS.mini.copyWith(fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // 控制键
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _SeekBtn(icon: Icons.replay, label: '${settings.rewindStep}s', onTap: () => engine.seekRelative(-settings.rewindStep.toDouble())),
+                      _RoundIcon(icon: Icons.skip_previous_rounded, size: 40, iconSize: 30, onTap: () => engine.prevTrack()),
+                      GestureDetector(
+                        onTap: engine.toggle,
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: C.navy,
+                            boxShadow: [BoxShadow(color: C.navy.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
+                          ),
+                          child: Icon(engine.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 42, color: Colors.white),
+                        ),
+                      ),
+                      _RoundIcon(icon: Icons.skip_next_rounded, size: 40, iconSize: 30, onTap: () => engine.nextTrack(userInitiated: true)),
+                      _SeekBtn(icon: Icons.forward, label: '${settings.forwardStep}s', onTap: () => engine.seekRelative(settings.forwardStep.toDouble())),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // 底部功能区
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Row(
+                    children: [
+                      Expanded(child: _BottomAction(icon: Icons.speed, label: '${_fmtSpeed(engine.player.speed)}x', onTap: () => _speedSheet(context, engine))),
+                      Expanded(child: _BottomAction(icon: Icons.vertical_align_top, label: settings.skipIntro > 0 ? '片头 ${settings.skipIntro}s' : '片头', onTap: () => _skipSheet(context, engine))),
+                      Expanded(child: _BottomAction(icon: Icons.vertical_align_bottom, label: settings.skipOutro > 0 ? '片尾 ${settings.skipOutro}s' : '片尾', onTap: () => _skipSheet(context, engine))),
+                      Expanded(child: _BottomAction(
+                        icon: Icons.bedtime_outlined,
+                        label: engine.sleepMode == SleepMode.timed && engine.sleepRemaining != null
+                            ? _fmtRemain(engine.sleepRemaining!)
+                            : (engine.sleepMode == SleepMode.endOfChapter ? '本章后' : '定时'),
+                        active: engine.sleepMode != SleepMode.off,
+                        onTap: () => _sleepSheet(context, engine),
+                      )),
+                      Expanded(child: _BottomAction(icon: Icons.format_list_bulleted, label: '目录', onTap: () => _chaptersSheet(context, engine))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtSpeed(double s) {
+    final v = s.toStringAsFixed(1);
+    return v.endsWith('.0') ? v.substring(0, v.length - 2) : v;
+  }
+
+  String _fmtRemain(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _addBookmark(BuildContext context, PlayerEngine engine) async {
+    final item = engine.item;
+    if (item == null) return;
+    try {
+      await engine.api.addBookmark(item.id, engine.absolute, engine.track?.title ?? '');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('书签已添加 · ${fmtDur(engine.absolute)}')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('添加失败：$e')));
+      }
+    }
+  }
+
+  void _moreSheet(BuildContext context, PlayerEngine engine) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.refresh, color: C.primary),
+            title: const Text('重新加载当前章节'),
+            onTap: () {
+              Navigator.pop(ctx);
+              engine.playAt(engine.index);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline, color: C.teal),
+            title: const Text('查看书籍详情'),
+            onTap: () {
+              Navigator.pop(ctx);
+              if (engine.item != null) {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookPage(item: engine.item!)));
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.stop_circle_outlined, color: C.red),
+            title: const Text('停止播放（同步进度并关闭会话）'),
+            onTap: () {
+              Navigator.pop(ctx);
+              engine.stopAndClose();
+              Navigator.of(context).pop();
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  void _speedSheet(BuildContext context, PlayerEngine engine) {
+    var v = engine.player.speed;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Text('倍速 · ${_fmtSpeed(v)}x', style: TS.title)),
+                const SizedBox(height: 8),
+                Slider(
+                  value: v.clamp(0.5, 3.0),
+                  min: 0.5,
+                  max: 3.0,
+                  divisions: 25,
+                  label: '${_fmtSpeed(v)}x',
+                  onChanged: (x) {
+                    setSheet(() => v = x);
+                    engine.setSpeed(x);
+                  },
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final s in [0.8, 1.0, 1.25, 1.5, 2.0])
+                      ChoiceChip(
+                        label: Text('${_fmtSpeed(s)}x'),
+                        selected: (v - s).abs() < 0.01,
+                        onSelected: (_) {
+                          setSheet(() => v = s);
+                          engine.setSpeed(s);
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text('此倍速会记住在本书记忆点，不影响其他书', style: TS.mini),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _skipSheet(BuildContext context, PlayerEngine engine) {
+    final s = engine.settings;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Text('跳过片头 / 片尾', style: TS.title)),
+                const SizedBox(height: 12),
+                const Text('跳过片头（每章开头）', style: TextStyle(fontSize: 13, color: C.text2)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final v in [0, 5, 10, 15, 20, 30, 60])
+                      ChoiceChip(
+                        label: Text(v == 0 ? '关闭' : '${v}s'),
+                        selected: s.skipIntro == v,
+                        onSelected: (_) {
+                          s.skipIntro = v;
+                          setSheet(() {});
+                          engine.touch();
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text('跳过片尾（每章结尾）', style: TextStyle(fontSize: 13, color: C.text2)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final v in [0, 5, 10, 15, 20, 30, 60])
+                      ChoiceChip(
+                        label: Text(v == 0 ? '关闭' : '${v}s'),
+                        selected: s.skipOutro == v,
+                        onSelected: (_) {
+                          s.skipOutro = v;
+                          setSheet(() {});
+                          engine.touch();
+                        },
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _sleepSheet(BuildContext context, PlayerEngine engine) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(padding: EdgeInsets.all(12), child: Text('定时关闭', style: TS.title)),
+          ListTile(
+            leading: const Icon(Icons.bedtime_off_outlined),
+            title: const Text('关闭定时'),
+            selected: engine.sleepMode == SleepMode.off,
+            onTap: () {
+              engine.setSleep(SleepMode.off);
+              Navigator.pop(ctx);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.menu_book_outlined),
+            title: const Text('播完本章'),
+            selected: engine.sleepMode == SleepMode.endOfChapter,
+            onTap: () {
+              engine.setSleep(SleepMode.endOfChapter);
+              Navigator.pop(ctx);
+            },
+          ),
+          for (final m in [15, 30, 45, 60, 90])
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: Text('$m 分钟后'),
+              onTap: () {
+                engine.setSleep(SleepMode.timed, duration: Duration(minutes: m));
+                Navigator.pop(ctx);
+              },
+            ),
+        ]),
+      ),
+    );
+  }
+
+  void _chaptersSheet(BuildContext context, PlayerEngine engine) {
+    final tracks = engine.tracks;
+    final item = engine.item;
+    if (tracks.isEmpty || item == null) return;
+    final controller = ScrollController(initialScrollOffset: (engine.index * 58.0 - 160).clamp(0, double.infinity));
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.of(ctx).size.height * 0.72,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('目录 · 共 ${tracks.length} 章', style: TS.title),
+            ),
+            Expanded(
+              child: ListView.builder(
+                controller: controller,
+                itemCount: tracks.length,
+                itemBuilder: (_, i) {
+                  final t = tracks[i];
+                  final cur = i == engine.index;
+                  return ListTile(
+                    dense: true,
+                    leading: Container(
+                      width: 30,
+                      height: 30,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: cur ? C.primary.withValues(alpha: 0.15) : null,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Text('${t.index}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cur ? C.primary : null)),
+                    ),
+                    title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: cur ? FontWeight.w700 : FontWeight.w400, color: cur ? C.primary : null)),
+                    trailing: Text(fmtDur(t.duration), style: TS.mini),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      engine.playAt(i);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundIcon extends StatelessWidget {
+  const _RoundIcon({required this.icon, required this.onTap, this.size = 38, this.iconSize = 22});
+  final IconData icon;
+  final VoidCallback onTap;
+  final double size;
+  final double iconSize;
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: (dark ? C.dCard : Colors.white).withValues(alpha: 0.75),
+        ),
+        child: Icon(icon, size: iconSize),
+      ),
+    );
+  }
+}
+
+class _SeekBtn extends StatelessWidget {
+  const _SeekBtn({required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 30),
+          const SizedBox(height: 2),
+          Text(label, style: const TextStyle(fontSize: 10, color: C.text2)),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomAction extends StatelessWidget {
+  const _BottomAction({required this.icon, required this.label, required this.onTap, this.active = false});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+  @override
+  Widget build(BuildContext context) {
+    final c = active ? C.primary : C.text2;
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 21, color: c),
+            const SizedBox(height: 3),
+            Text(label, style: TextStyle(fontSize: 10.5, color: c, fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
+          ],
+        ),
+      ),
+    );
+  }
+}
