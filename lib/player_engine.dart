@@ -171,7 +171,7 @@ class PlayerEngine extends ChangeNotifier {
       await player.seek(Duration(milliseconds: (abs * 1000).round()));
       index = _trackIndexForAbsolute(abs);
       _absolute = abs;
-      if (autoplay) await player.play();
+      if (autoplay) unawaited(player.play());
     } else {
       final ti = _trackIndexForAbsolute(abs);
       final inTrack = max(0.0, abs - tracks[ti].startOffset);
@@ -239,7 +239,7 @@ class PlayerEngine extends ChangeNotifier {
     }
     error = null;
     _reportMediaItem();
-    if (autoplay) await player.play();
+    if (autoplay) unawaited(player.play());
     _ensureListenTimer();
     _warmAhead();
     notifyListeners();
@@ -286,7 +286,7 @@ class PlayerEngine extends ChangeNotifier {
       await player.pause();
       unawaited(syncNow());
     } else {
-      await player.play();
+      unawaited(player.play());
     }
   }
 
