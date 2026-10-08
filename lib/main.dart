@@ -57,7 +57,7 @@ class HavenApp extends StatefulWidget {
 }
 
 class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
-  bool _wasBackgrounded = false;
+  DateTime? _hiddenAt;
 
   @override
   void initState() {
@@ -68,18 +68,24 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      // 记录首次离开前台的时间（不覆盖）
+      _hiddenAt ??= DateTime.now();
       widget.app.engine.syncNow();
-      _wasBackgrounded = true;
     } else if (state == AppLifecycleState.resumed) {
-      final fromBg = _wasBackgrounded;
-      _wasBackgrounded = false;
-      // 从锁屏/后台返回时直接进入播放器
-      if (fromBg && widget.app.engine.hasBook && !playerPageOpen) {
+      final since = _hiddenAt;
+      _hiddenAt = null;
+      final awaySec = since == null ? 0 : DateTime.now().difference(since).inSeconds;
+      // 从锁屏/后台回来（离开超过 2 秒）且有正在播放的书、且不在播放页 → 直达播放器
+      if (awaySec >= 2 && widget.app.engine.hasBook && !playerPageOpen) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (navigatorKey.currentState != null && !playerPageOpen) {
-            navigatorKey.currentState!.push(PlayerPage.route());
-          }
+          Future.delayed(const Duration(milliseconds: 350), () {
+            if (navigatorKey.currentState != null && !playerPageOpen) {
+              navigatorKey.currentState!.push(PlayerPage.route());
+            }
+          });
         });
       }
     }
