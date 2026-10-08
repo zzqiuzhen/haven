@@ -1,6 +1,7 @@
 /// 书籍详情页
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -71,21 +72,21 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  Future<void> _play({double? startAt}) async {
+  void _play({double? startAt}) {
     final app = context.read<AppState>();
     final engine = context.read<PlayerEngine>();
     final pg = app.progressOf(widget.item.id);
-    await engine.open(widget.item, startAt: startAt ?? (pg?.currentTime ?? 0));
-    if (mounted) Navigator.of(context).push(PlayerPage.route());
+    Navigator.of(context).push(PlayerPage.route());
+    unawaited(engine.open(widget.item, startAt: startAt ?? (pg?.currentTime ?? 0)));
   }
 
-  Future<void> _onChapterTap(int i, Track t) async {
+  void _onChapterTap(int i, Track t) {
     final engine = context.read<PlayerEngine>();
+    Navigator.of(context).push(PlayerPage.route());
     if (engine.hasBook && engine.item?.id == widget.item.id) {
-      await engine.playAt(i);
-      if (mounted) Navigator.of(context).push(PlayerPage.route());
+      unawaited(engine.playAt(i));
     } else {
-      await _play(startAt: t.startOffset);
+      unawaited(engine.open(widget.item, startAt: t.startOffset));
     }
   }
 

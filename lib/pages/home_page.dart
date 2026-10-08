@@ -1,6 +1,8 @@
 /// 首页 · 发现
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -107,13 +109,11 @@ class _ContinueCard extends StatelessWidget {
   final LibItem item;
   final MediaProgress pg;
 
-  Future<void> _open(BuildContext context) async {
-    final app = context.read<AppState>();
+  void _open(BuildContext context) {
     final engine = context.read<PlayerEngine>();
-    final d = await app.detail(item.id);
-    app.prewarm(item, d, pg.currentTime);
-    await engine.open(item, startAt: pg.currentTime);
-    if (context.mounted) Navigator.of(context).push(PlayerPage.route());
+    // 先立即跳转播放页（即时反馈），再在后台加载会话与音源，避免等待导致“点不动”
+    Navigator.of(context).push(PlayerPage.route());
+    unawaited(engine.open(item, startAt: pg.currentTime));
   }
 
   @override

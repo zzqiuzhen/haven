@@ -226,10 +226,10 @@ class PlayerEngine extends ChangeNotifier {
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(src.url), headers: src.headers),
         initialPosition: Duration(milliseconds: (pos * 1000).round()),
-      );
+      ).timeout(const Duration(seconds: 10));
     } catch (e) {
-      debugPrint('setAudioSource failed: $e');
-      if (!forceProxy && t.contentUrl != null) {
+      debugPrint('setAudioSource 失败，尝试回退服务端代理: $e');
+      if (!forceProxy && t.contentUrl != null && t.contentUrl!.isNotEmpty) {
         await _playTrackIndex(ti, inTrack: inTrack, autoplay: autoplay, forceProxy: true);
         return;
       }
@@ -379,7 +379,9 @@ class PlayerEngine extends ChangeNotifier {
     if (!_usedFallback && _lastSourceDirect && t != null && t.contentUrl != null && !isTranscode) {
       _usedFallback = true;
       debugPrint('直连失败，回退服务端代理');
-      await _playTrackIndex(index, inTrack: player.position.inMilliseconds / 1000.0, autoplay: true, forceProxy: true);
+      // 按“出错前是否在播放”决定是否继续播放，避免用户手动暂停后又被自动拉起
+      final wasPlaying = player.playing;
+      await _playTrackIndex(index, inTrack: player.position.inMilliseconds / 1000.0, autoplay: wasPlaying, forceProxy: true);
       return;
     }
     error = '播放出错：$e';

@@ -57,57 +57,51 @@ class MiniPlayerBar extends StatelessWidget {
     if (!engine.hasBook) return const SizedBox.shrink();
     final item = engine.item!;
     final t = engine.track;
-    final progress = engine.duration > 0 ? (engine.absolute / engine.duration).clamp(0.0, 1.0) : 0.0;
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final progress = engine.duration > 0 ? (engine.absolute / engine.duration).clamp(0.0, 1.0).toDouble() : 0.0;
 
     return GestureDetector(
       onTap: () => Navigator.of(context).push(PlayerPage.route()),
       onLongPress: () => _showActions(context, engine),
-      child: Container(
-        height: 62,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          color: (dark ? C.dCard : Colors.white).withValues(alpha: 0.94),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.4 : 0.08), blurRadius: 18, offset: const Offset(0, 6)),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Row(
-                  children: [
-                    HavenCover(item.id, item.meta.title, size: 44, radius: 10),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 2),
-                          Text(t?.title ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: C.text2)),
-                        ],
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Glass(
+          radius: 20,
+          child: SizedBox(
+            height: 62,
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    children: [
+                      HavenCover(item.id, item.meta.title, size: 44, radius: 10),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text(t?.title ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: C.text2)),
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: engine.toggle,
-                      icon: Icon(engine.playing ? Icons.pause_circle_filled : Icons.play_circle_fill, size: 34, color: C.navy),
-                    ),
-                  ],
+                      IconButton(
+                        onPressed: engine.toggle,
+                        icon: Icon(engine.playing ? Icons.pause_circle_filled : Icons.play_circle_fill, size: 34, color: C.navy),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: ProgressLine(progress, height: 2.5),
-              ),
-            ],
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: ProgressLine(progress, height: 2.5),
+                ),
+              ],
+            ),
           ),
         ),
       ),

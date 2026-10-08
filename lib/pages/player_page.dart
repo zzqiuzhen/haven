@@ -44,7 +44,7 @@ class _PlayerPageState extends State<PlayerPage> {
     if (item == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const EmptyView('当前没有播放中的书籍'),
+        body: engine.loading ? const LoadingView() : const EmptyView('当前没有播放中的书籍'),
       );
     }
 
@@ -57,9 +57,6 @@ class _PlayerPageState extends State<PlayerPage> {
     final chapPos = _dragging
         ? _dragValue
         : (engine.absolute - chapStart).clamp(0.0, chapDur <= 0 ? 1.0 : chapDur).toDouble();
-    final chapBuf = chapDur <= 0
-        ? 0.0
-        : ((engine.bufferedAbsolute - chapStart) / chapDur).clamp(0.0, 1.0).toDouble();
     final cacheMgr = context.watch<CacheManager>();
     final cacheActive = cacheMgr.tasks
         .where((t) => t.bookId == item.id && (t.state == 'queued' || t.state == 'downloading'))
@@ -173,113 +170,106 @@ class _PlayerPageState extends State<PlayerPage> {
                       ],
                     ),
                   ),
-                // 进度区
+                // 底部液态玻璃面板：进度 + 控制键 + 功能区
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                  child: Column(
-                    children: [
-                      if (buffering)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.8)),
-                              const SizedBox(width: 8),
-                              Text('缓冲中…', style: TS.mini.copyWith(fontSize: 11.5)),
-                            ],
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+                  child: Glass(
+                    radius: 26,
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (buffering)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.8)),
+                                const SizedBox(width: 8),
+                                Text('缓冲中…', style: TS.mini.copyWith(fontSize: 11.5)),
+                              ],
+                            ),
+                          ),
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 4,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.5),
+                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                          ),
+                          child: Slider(
+                            value: chapPos.isNaN ? 0 : chapPos,
+                            max: chapDur <= 0 ? 1 : chapDur,
+                            onChangeStart: (v) => setState(() {
+                              _dragging = true;
+                              _dragValue = v;
+                            }),
+                            onChanged: (v) => setState(() => _dragValue = v),
+                            onChangeEnd: (v) {
+                              setState(() => _dragging = false);
+                              engine.seekAbsolute(chapStart + v);
+                            },
                           ),
                         ),
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 4,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.5),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Text(fmtDur(chapPos), style: TS.mini.copyWith(fontSize: 12)),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => _addBookmark(context, engine),
+                              child: const Row(children: [
+                                Icon(Icons.bookmark_add_outlined, size: 14, color: C.text2),
+                                SizedBox(width: 4),
+                                Text('添加书签', style: TextStyle(fontSize: 12, color: C.text2)),
+                              ]),
+                            ),
+                            const Spacer(),
+                            Text(fmtDur(chapDur), style: TS.mini.copyWith(fontSize: 12)),
+                          ],
                         ),
-                        child: Slider(
-                          value: chapPos.isNaN ? 0 : chapPos,
-                          max: chapDur <= 0 ? 1 : chapDur,
-                          onChangeStart: (v) => setState(() {
-                            _dragging = true;
-                            _dragValue = v;
-                          }),
-                          onChanged: (v) => setState(() => _dragValue = v),
-                          onChangeEnd: (v) {
-                            setState(() => _dragging = false);
-                            engine.seekAbsolute(chapStart + v);
-                          },
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _SeekBtn(icon: Icons.replay, label: '${settings.rewindStep}s', onTap: () => engine.seekRelative(-settings.rewindStep.toDouble())),
+                            _RoundIcon(icon: Icons.skip_previous_rounded, size: 40, iconSize: 30, onTap: () => engine.prevTrack()),
+                            GestureDetector(
+                              onTap: engine.toggle,
+                              child: Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: C.navy,
+                                  boxShadow: [BoxShadow(color: C.navy.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
+                                ),
+                                child: Icon(engine.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 42, color: Colors.white),
+                              ),
+                            ),
+                            _RoundIcon(icon: Icons.skip_next_rounded, size: 40, iconSize: 30, onTap: () => engine.nextTrack(userInitiated: true)),
+                            _SeekBtn(icon: Icons.forward, label: '${settings.forwardStep}s', onTap: () => engine.seekRelative(settings.forwardStep.toDouble())),
+                          ],
                         ),
-                      ),
-                      SizedBox(
-                        height: 3,
-                        child: ProgressLine(chapBuf, height: 3, color: dark ? Colors.white24 : Colors.black12),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Text(fmtDur(chapPos), style: TS.mini.copyWith(fontSize: 12)),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: () => _addBookmark(context, engine),
-                            child: const Row(children: [
-                              Icon(Icons.bookmark_add_outlined, size: 14, color: C.text2),
-                              SizedBox(width: 4),
-                              Text('添加书签', style: TextStyle(fontSize: 12, color: C.text2)),
-                            ]),
-                          ),
-                          const Spacer(),
-                          Text(fmtDur(chapDur), style: TS.mini.copyWith(fontSize: 12)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                // 控制键
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _SeekBtn(icon: Icons.replay, label: '${settings.rewindStep}s', onTap: () => engine.seekRelative(-settings.rewindStep.toDouble())),
-                      _RoundIcon(icon: Icons.skip_previous_rounded, size: 40, iconSize: 30, onTap: () => engine.prevTrack()),
-                      GestureDetector(
-                        onTap: engine.toggle,
-                        child: Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: C.navy,
-                            boxShadow: [BoxShadow(color: C.navy.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
-                          ),
-                          child: Icon(engine.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 42, color: Colors.white),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(child: _BottomAction(icon: Icons.speed, label: '${_fmtSpeed(engine.player.speed)}x', onTap: () => _speedSheet(context, engine))),
+                            Expanded(child: _BottomAction(icon: Icons.vertical_align_top, label: settings.skipIntro > 0 ? '片头 ${settings.skipIntro}s' : '片头', onTap: () => _skipSheet(context, engine))),
+                            Expanded(child: _BottomAction(icon: Icons.vertical_align_bottom, label: settings.skipOutro > 0 ? '片尾 ${settings.skipOutro}s' : '片尾', onTap: () => _skipSheet(context, engine))),
+                            Expanded(child: _BottomAction(
+                              icon: Icons.bedtime_outlined,
+                              label: engine.sleepMode == SleepMode.timed && engine.sleepRemaining != null
+                                  ? _fmtRemain(engine.sleepRemaining!)
+                                  : (engine.sleepMode == SleepMode.endOfChapter ? '本章后' : '定时'),
+                              active: engine.sleepMode != SleepMode.off,
+                              onTap: () => _sleepSheet(context, engine),
+                            )),
+                            Expanded(child: _BottomAction(icon: Icons.format_list_bulleted, label: '目录', onTap: () => _chaptersSheet(context, engine))),
+                          ],
                         ),
-                      ),
-                      _RoundIcon(icon: Icons.skip_next_rounded, size: 40, iconSize: 30, onTap: () => engine.nextTrack(userInitiated: true)),
-                      _SeekBtn(icon: Icons.forward, label: '${settings.forwardStep}s', onTap: () => engine.seekRelative(settings.forwardStep.toDouble())),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                // 底部功能区
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                  child: Row(
-                    children: [
-                      Expanded(child: _BottomAction(icon: Icons.speed, label: '${_fmtSpeed(engine.player.speed)}x', onTap: () => _speedSheet(context, engine))),
-                      Expanded(child: _BottomAction(icon: Icons.vertical_align_top, label: settings.skipIntro > 0 ? '片头 ${settings.skipIntro}s' : '片头', onTap: () => _skipSheet(context, engine))),
-                      Expanded(child: _BottomAction(icon: Icons.vertical_align_bottom, label: settings.skipOutro > 0 ? '片尾 ${settings.skipOutro}s' : '片尾', onTap: () => _skipSheet(context, engine))),
-                      Expanded(child: _BottomAction(
-                        icon: Icons.bedtime_outlined,
-                        label: engine.sleepMode == SleepMode.timed && engine.sleepRemaining != null
-                            ? _fmtRemain(engine.sleepRemaining!)
-                            : (engine.sleepMode == SleepMode.endOfChapter ? '本章后' : '定时'),
-                        active: engine.sleepMode != SleepMode.off,
-                        onTap: () => _sleepSheet(context, engine),
-                      )),
-                      Expanded(child: _BottomAction(icon: Icons.format_list_bulleted, label: '目录', onTap: () => _chaptersSheet(context, engine))),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],

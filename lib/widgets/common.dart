@@ -182,7 +182,79 @@ class BlobBackground extends StatelessWidget {
       );
 }
 
-/// 底部悬浮导航条（圆角浮岛 + 毛玻璃）
+/// 液态玻璃（liquid glass）面板：半透明 + 大模糊 + 顶部高光描边
+class Glass extends StatelessWidget {
+  const Glass({
+    super.key,
+    required this.child,
+    this.radius = 24,
+    this.padding,
+    this.alpha,
+    this.blur = 26,
+    this.highlight = true,
+  });
+
+  final Widget child;
+  final double radius;
+  final EdgeInsetsGeometry? padding;
+  final double? alpha;
+  final double blur;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final a = alpha ?? (dark ? 0.52 : 0.5);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            color: (dark ? const Color(0xFF20262E) : Colors.white).withValues(alpha: a),
+            border: Border.all(
+              color: dark ? Colors.white.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.55),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.4 : 0.08), blurRadius: 24, offset: const Offset(0, 8)),
+            ],
+          ),
+          child: highlight
+              ? Stack(children: [
+                  child,
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 1.4,
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                              Colors.white.withValues(alpha: 0),
+                              Colors.white.withValues(alpha: 0.7),
+                              Colors.white.withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ])
+              : child,
+        ),
+      ),
+    );
+  }
+}
+
+/// 底部悬浮导航条（圆角浮岛 + 液态玻璃）
 class HavenNavBar extends StatelessWidget {
   const HavenNavBar({super.key, required this.index, required this.onChanged});
   final int index;
@@ -200,11 +272,15 @@ class HavenNavBar extends StatelessWidget {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final bar = Container(
       height: 62,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: (dark ? C.dCard : Colors.white).withValues(alpha: 0.92),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.35 : 0.07), blurRadius: 18, offset: const Offset(0, 6))],
+        color: (dark ? C.dCard : Colors.white).withValues(alpha: 0.55),
+        border: Border.all(
+          color: dark ? Colors.white.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.55),
+          width: 1,
+        ),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.4 : 0.08), blurRadius: 24, offset: const Offset(0, 8))],
       ),
       child: Row(
         children: [
@@ -245,7 +321,7 @@ class HavenNavBar extends StatelessWidget {
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12), child: bar),
+      child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26), child: bar),
     );
   }
 }
