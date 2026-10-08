@@ -89,25 +89,35 @@ class PlayerEngine extends ChangeNotifier {
   /// 冷启动恢复：把上次播放的书加载进引擎（不自动播放），让迷你播放器/继续收听立即可用
   Future<void> restoreLast() async {
     if (hasBook) return; // 已有书在播/已加载，不覆盖
-    final m = owner?.me;
-    if (m == null) return;
-    // 取最近有进度且未完成的书
-    final ps = m.mediaProgress
-        .where((p) => !p.hideFromContinue && !p.isFinished && p.currentTime > 1)
-        .toList();
-    if (ps.isEmpty) return;
-    ps.sort((a, b) => (b.updatedAt?.millisecondsSinceEpoch ?? 0)
-        .compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0));
-    final pg = ps.first;
-    final id = pg.libraryItemId;
+    final o = owner;
+    if (o == null) return;
+    // 优先本机最后播放记录（最新最准），其次服务端最近进度
+    String? id;
+    double abs = 0;
+    final lp = settings.lastPos;
+    if (lp != null && lp.$1.isNotEmpty) {
+      id = lp.$1;
+      abs = lp.$2;
+    } else {
+      final m = o.me;
+      if (m == null) return;
+      final ps = m.mediaProgress
+          .where((p) => !p.hideFromContinue && !p.isFinished && p.currentTime > 1)
+          .toList();
+      if (ps.isEmpty) return;
+      ps.sort((a, b) => (b.updatedAt?.millisecondsSinceEpoch ?? 0)
+          .compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0));
+      id = ps.first.libraryItemId;
+      abs = ps.first.currentTime;
+    }
     if (id == null || id.isEmpty) return;
     try {
       final d = await _loadDetail(id);
-      final it = await owner!.ensureItem(id);
+      final it = await o.ensureItem(id);
       item = it;
       detail = d;
-      index = _trackIndexForAbsolute(pg.currentTime);
-      _absolute = pg.currentTime;
+      index = _trackIndexForAbsolute(abs);
+      _absolute = abs;
       loading = false;
       error = null;
       notifyListeners();
@@ -199,6 +209,7 @@ class PlayerEngine extends ChangeNotifier {
         }
       }
       _startSyncLoop();
+      unawaited(syncNow());
     } catch (e) {
       debugPrint('ensureSession failed: $e');
     }
@@ -214,9 +225,10 @@ class PlayerEngine extends ChangeNotifier {
   }
 
   Future<void> _startAt(double abs, {bool autoplay = true}) async {
-    if (session == null || tracks.isEmpty) return;
+    if (tracks.isEmpty) return;
     error = null;
     if (isTranscode) {
+      if (session == null) return; // 转码需先有会话拿 HLS 地址
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(_hlsUrl()), headers: api.authHeaders),
       );
@@ -294,9 +306,25 @@ class PlayerEngine extends ChangeNotifier {
     }
     error = null;
     _reportMediaItem();
+    _persistPos(force: true);
     if (autoplay) unawaited(player.play());
     _ensureListenTimer();
     _warmAhead();
+    // 初始跳转保险：个别流 initialPosition 不生效时，起播 6 秒后仍在开头则强制 seek 到续播点
+    if (autoplay && pos > 30) {
+      final expect = pos;
+      final myIdx = ti;
+      unawaited(() async {
+        await Future.delayed(const Duration(seconds: 6));
+        if (_closing || index != myIdx || !player.playing) return;
+        final cur = player.position.inMilliseconds / 1000.0;
+        if (cur < 3.0) {
+          try {
+            await player.seek(Duration(milliseconds: (expect * 1000).round()));
+          } catch (_) {}
+        }
+      }());
+    }
     notifyListeners();
   }
 
@@ -339,6 +367,7 @@ class PlayerEngine extends ChangeNotifier {
     if (!hasBook) return;
     if (player.playing) {
       await player.pause();
+      _persistPos(force: true);
       unawaited(syncNow());
     } else {
       // 恢复态（item 已加载但还没起播）：需要真正 open 起播
@@ -400,8 +429,8 @@ class PlayerEngine extends ChangeNotifier {
   // ---------------- 事件处理 ----------------
 
   void _updateAbsolute(double pos) {
-    if (session == null) return;
-    if (isTranscode) {
+    if (!hasBook || tracks.isEmpty) return;
+    if (session != null && isTranscode) {
       _absolute = pos;
       final ti = _trackIndexForAbsolute(pos);
       if (ti != index) {
@@ -417,6 +446,19 @@ class PlayerEngine extends ChangeNotifier {
         }
       }
     }
+    _persistPos();
+  }
+
+  int _lastPosSaveMs = 0;
+
+  /// 本地持久化播放位置（节流 2.5s；force 立即写）
+  void _persistPos({bool force = false}) {
+    final it = item;
+    if (it == null || _absolute <= 0) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force && now - _lastPosSaveMs < 2500) return;
+    _lastPosSaveMs = now;
+    unawaited(settings.saveLastPos(it.id, _absolute));
   }
 
   Future<void> _onCompleted() async {
@@ -458,7 +500,11 @@ class PlayerEngine extends ChangeNotifier {
   void _startSyncLoop() {
     _syncTimer?.cancel();
     final secs = settings.syncInterval.clamp(5, 600);
-    _syncTimer = Timer.periodic(Duration(seconds: secs), (_) => syncNow());
+    _syncTimer = Timer.periodic(Duration(seconds: secs), (_) {
+      // 会话缺失自愈：快速起播时后台建会话失败则重试
+      if (session == null && hasBook) unawaited(_ensureSession());
+      syncNow();
+    });
   }
 
   Future<void> syncNow() async {
@@ -466,6 +512,8 @@ class PlayerEngine extends ChangeNotifier {
     if (s == null || _closing) return;
     final listen = _unsynced;
     final abs = _absolute;
+    // 防呆：无有效位置且无收听时长时不发送（避免把服务端进度刷成 0）
+    if (abs < 0.5 && listen < 0.5) return;
     if (listen < 0.5 && (abs - _lastSyncedAbs).abs() < 0.5) return;
     try {
       await api.syncSession(s.id, currentTime: abs, timeListened: listen, duration: duration);
@@ -502,14 +550,20 @@ class PlayerEngine extends ChangeNotifier {
     try {
       await player.pause();
     } catch (_) {}
+    _persistPos(force: true);
     final s = session;
     if (s != null && closeSession) {
       try {
-        await api.closeSession(s.id, sync: {
-          'currentTime': _absolute,
-          'timeListened': _unsynced,
-          'duration': duration,
-        });
+        if (_absolute > 0.5) {
+          await api.closeSession(s.id, sync: {
+            'currentTime': _absolute,
+            'timeListened': _unsynced,
+            'duration': duration,
+          });
+        } else {
+          // 无有效位置时不做带 sync 的关闭（避免把服务端进度刷成 0）
+          await api.closeSession(s.id);
+        }
       } catch (e) {
         debugPrint('close session failed: $e');
       }

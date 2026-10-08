@@ -98,4 +98,29 @@ class Settings {
     m[bookId] = b;
     await _sp.setString('book_prefs', jsonEncode(m));
   }
+
+  // ---- 本机最后播放位置（本地续播优先，杜绝服务端进度滞后导致回跳）----
+  /// 返回 (libraryItemId, 绝对秒数, 保存时间戳ms)；无则 null
+  (String, double, int)? get lastPos {
+    try {
+      final raw = _sp.getString('last_pos');
+      if (raw == null || raw.isEmpty) return null;
+      final m = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      final id = m['id']?.toString() ?? '';
+      final abs = (m['abs'] is num) ? (m['abs'] as num).toDouble() : 0.0;
+      final ts = (m['ts'] is num) ? (m['ts'] as num).toInt() : 0;
+      if (id.isEmpty || abs <= 0) return null;
+      return (id, abs, ts);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveLastPos(String bookId, double abs) async {
+    if (bookId.isEmpty || abs <= 0) return;
+    await _sp.setString(
+      'last_pos',
+      jsonEncode({'id': bookId, 'abs': abs, 'ts': DateTime.now().millisecondsSinceEpoch}),
+    );
+  }
 }

@@ -75,13 +75,12 @@ class _BookPageState extends State<BookPage> {
   void _play({double? startAt}) {
     final app = context.read<AppState>();
     final engine = context.read<PlayerEngine>();
-    final pg = app.progressOf(widget.item.id);
     Navigator.of(context).push(PlayerPage.route());
     if (engine.hasBook && engine.item?.id == widget.item.id && engine.session == null && startAt == null) {
       // 恢复态同一本书：直接续播
       unawaited(engine.toggle());
     } else {
-      unawaited(engine.open(widget.item, startAt: startAt ?? (pg?.currentTime ?? 0)));
+      unawaited(engine.open(widget.item, startAt: startAt ?? app.resumeAbsFor(widget.item.id)));
     }
   }
 

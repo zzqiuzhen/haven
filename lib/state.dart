@@ -54,6 +54,20 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  /// 该书的续播点（秒）：本机最后播放位置与服务端进度取新者；时间接近时取较大值防回跳
+  double resumeAbsFor(String libraryItemId) {
+    final pg = progressOf(libraryItemId);
+    final srv = pg?.currentTime ?? 0;
+    final srvTs = pg?.updatedAt?.millisecondsSinceEpoch ?? 0;
+    final lp = settings.lastPos;
+    if (lp != null && lp.$1 == libraryItemId) {
+      final gap = (lp.$3 - srvTs).abs();
+      if (srvTs == 0 || gap < 120000) return lp.$2 > srv ? lp.$2 : srv;
+      return lp.$3 > srvTs ? lp.$2 : srv;
+    }
+    return srv;
+  }
+
   Future<void> boot() async {
     // 开发调试注入（--dart-define=HAVEN_DEV_TOKEN / HAVEN_DEV_SERVER，正式包不含）
     const devToken = String.fromEnvironment('HAVEN_DEV_TOKEN');
