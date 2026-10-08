@@ -55,6 +55,13 @@ String todayLabel() {
   return '${now.month}月${now.day}日 星期${week[now.weekday - 1]}';
 }
 
+/// 去掉音频文件名后缀等显示噪音（章节标题清洗）
+String prettyTrackTitle(String t) {
+  var s = t.replaceAll(RegExp(r'\.(strm|mp3|m4a|m4b|wma|aac|flac|ogg|opus|wav|mp4)$', caseSensitive: false), '');
+  s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return s.isEmpty ? t : s;
+}
+
 String fmtBytes(double bytes) {
   if (bytes <= 0) return '0B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

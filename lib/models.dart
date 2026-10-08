@@ -172,7 +172,7 @@ class Track {
     return Track(
       index: toI(j['index']),
       ino: _s(j['ino']),
-      title: _s(j['title'] ?? md['filename'] ?? '第${j['index']}章'),
+      title: prettyTrackTitle(_s(j['title'] ?? md['filename'] ?? '第${j['index']}章')),
       duration: toD(j['duration']),
       startOffset: startOffset ?? toD(j['startOffset']),
       codec: _s(j['codec']),
