@@ -1,17 +1,47 @@
-# haven
+# Haven
 
-A new Flutter project.
+自托管有声书 iOS 客户端 —— 为 **Audiobookshelf + 115 网盘（MoviePilot 302 / strm）** 环境定制。
+界面风格参考 Leelaa Reader，重点优化「打开即听」的起播速度。
 
-## Getting Started
+## 功能
 
-This project is a starting point for a Flutter application.
+- 连接任意 Audiobookshelf 服务端（v2.36+ 兼容，支持子路径反代，如 `/audiobookshelf`）
+- 发现页：继续收听 / 聆听数据（今日、本周、连续、累计）/ 最新入库 / 多书库入口
+- 书库：分类切换、排序、网格封面、分页加载、进度角标
+- 搜索：跨书库按书名 / 作者搜索
+- 书籍详情：封面模糊背景、章节分组（每 100 章）、章节级缓存状态、书签
+- 播放器：倍速 0.5x–3.0x（按书记忆）、定时关闭（含"播完本章"）、跳过片头/片尾、快进快退、章节切换、锁屏 / 后台播放、缓冲可视化
+- 离线缓存：自动缓存后续 N 章 + 手动批量缓存，本地缓存优先播放（秒开）
+- 进度同步：每 30 秒 / 暂停时 / 切章时同步到服务端，与网页端无缝续听
 
-A few resources to get you started if this is your first Flutter project:
+## 快速起播都做了什么
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+1. **打开书即预热**：进入详情页就对续播章节发起 `Range: 0-1` 请求，让服务端提前完成 MoviePilot → 115 的 302 解析并缓存直链（服务端解析约 0.3s）。
+2. **极速直连模式（默认开启）**：播放时直接跟随 MoviePilot 302 拉到 115 CDN（免 NAS 中转带宽），失败自动回退服务端代理。
+3. **超前预取**：播放中自动预热并下载后续章节到本地；已缓存章节秒开（切章近 0 延迟）。
+4. **失败自动降级**：直连失败 → 代理；代理失败提示重试，不卡死。
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+> 实测（Tailscale 外网）：起播首字节约 0.4–0.7s；已缓存章节 <0.2s。
+
+## 构建与安装
+
+- 本地：`flutter pub get && flutter analyze`
+- 云端：推送 `main` 分支后 GitHub Actions（macos-14）自动产出**未签名 IPA**（Actions → Artifacts → `Haven-unsigned-ipa`）
+- 安装（iOS 16+）：对 IPA 自签名后安装
+  - **Sideloadly / 爱思助手**：拖入 IPA，用 Apple ID 签名安装
+  - **TrollStore**（若系统支持）：分享 IPA 给 TrollStore 安装
+  - AltStore / LiveContainer 同理
+
+## 服务端要求
+
+- Audiobookshelf（兼容官方 API；本项目针对 strm/302 魔改版场景测试）
+- 如需"极速直连"，手机需能访问 MoviePilot 地址（局域网或 Tailscale 子网路由）
+
+## 已知限制
+
+- WMA 等 iOS 不支持的编码会自动请求服务端转码（AAC HLS），首次起播略慢、会占用 NAS CPU
+- 直连模式下 115 CDN 签名有效期由服务端给出，过期后自动重解析
+
+## 许可
+
+MIT License · 仅供个人自托管使用
