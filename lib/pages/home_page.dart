@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../consts.dart';
 import '../models.dart';
 import '../player_engine.dart';
 import '../state.dart';
@@ -64,7 +65,7 @@ class _Header extends StatelessWidget {
             children: [
               const Text('发现', style: TS.h1),
               const SizedBox(height: 4),
-              Text(todayLabel(), style: TS.sub),
+              Text('${todayLabel()} · v$kAppVersion', style: TS.sub),
             ],
           ),
         ),

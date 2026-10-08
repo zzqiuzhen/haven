@@ -18,82 +18,82 @@
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconBlue-60x60@2x.png</string>
+					<string>AppIconBlue</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconBlue</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 			<key>AppIconBlueDark</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconBlueDark-60x60@2x.png</string>
+					<string>AppIconBlueDark</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconBlueDark</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 			<key>AppIconBright</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconBright-60x60@2x.png</string>
+					<string>AppIconBright</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconBright</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 			<key>AppIconBrightDark</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconBrightDark-60x60@2x.png</string>
+					<string>AppIconBrightDark</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconBrightDark</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 			<key>AppIconDark</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconDark-60x60@2x.png</string>
+					<string>AppIconDark</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconDark</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 			<key>AppIconDarkDark</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconDarkDark-60x60@2x.png</string>
+					<string>AppIconDarkDark</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconDarkDark</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 			<key>AppIconDefaultDark</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconDefaultDark-60x60@2x.png</string>
+					<string>AppIconDefaultDark</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconDefaultDark</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 			<key>AppIconFresh</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconFresh-60x60@2x.png</string>
+					<string>AppIconFresh</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconFresh</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 			<key>AppIconFreshDark</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>AppIconFreshDark-60x60@2x.png</string>
+					<string>AppIconFreshDark</string>
 				</array>
-				<key>CFBundleIconName</key>
-				<string>AppIconFreshDark</string>
+				<key>UIPrerenderedIcon</key>
+				<false/>
 			</dict>
 		</dict>
 		<key>CFBundlePrimaryIcon</key>

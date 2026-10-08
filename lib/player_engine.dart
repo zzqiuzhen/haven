@@ -174,8 +174,15 @@ class PlayerEngine extends ChangeNotifier {
       await player.setSpeed(sp);
       final needTranscode = detail!.tracks.any((t) => codecNeedsTranscode(t.codec, t.mimeType));
       if (needTranscode) {
-        // 转码书必须先建会话拿 HLS 地址
-        session = await api.startPlay(it.id, forceTranscode: true);
+        // 转码书必须先建会话拿 HLS 地址；详情页若已预热且未过期则直接复用
+        final pre = _preSession;
+        if (pre != null && _preItem?.id == it.id && DateTime.now().difference(_preAt).inMinutes < 5) {
+          session = pre;
+        } else {
+          session = await api.startPlay(it.id, forceTranscode: true);
+        }
+        _preSession = null;
+        _preItem = null;
         await _startAt(start, autoplay: autoplay);
         _startSyncLoop();
       } else {
@@ -235,6 +242,9 @@ class PlayerEngine extends ChangeNotifier {
         notifyListeners();
         return;
       }
+      // HLS 冷启动预热：服务端转码器需先拉起源文件（首个分片就绪前请求会 404），
+      // 直接交给播放器会因分片 404 报错；这里轮询等待首个分片可用（最长约 60 秒）
+      await _warmHlsStream();
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(_hlsUrl()), headers: api.authHeaders),
       );
@@ -258,6 +268,61 @@ class PlayerEngine extends ChangeNotifier {
     return api.fullTrackUrl('/hls/${session?.id}/output.m3u8');
   }
 
+  /// 轮询等待转码首个分片就绪（HLS 冷启动；返回是否就绪）
+  Future<bool> _warmHlsStream() async {
+    final s = session;
+    if (s == null) return false;
+    final segUrl = api.fullTrackUrl('/hls/${s.id}/output-0.ts');
+    for (int i = 0; i < 32; i++) {
+      if (session?.id != s.id) return false;
+      try {
+        final r = await api.dio.get<List<int>>(
+          segUrl,
+          options: Options(
+            headers: {...api.authHeaders, 'Range': 'bytes=0-1'},
+            responseType: ResponseType.bytes,
+            receiveTimeout: const Duration(seconds: 15),
+          ),
+        );
+        final code = r.statusCode ?? 0;
+        if (code >= 200 && code < 300) return true;
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 1800));
+    }
+    return false;
+  }
+
+  // ---------------- 转码书预热 ----------------
+
+  PlaySession? _preSession;
+  LibItem? _preItem;
+  DateTime _preAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 进入书籍详情页时调用：提前创建转码会话并触发一次分片请求，起播免等冷启动
+  Future<void> prewarmTranscode(LibItem it) async {
+    if (session != null || player.playing || _closing) return;
+    if (_preSession != null && _preItem?.id == it.id) return;
+    try {
+      final s = await api.startPlay(it.id, forceTranscode: true);
+      _preSession = s;
+      _preItem = it;
+      _preAt = DateTime.now();
+      final segUrl = api.fullTrackUrl('/hls/${s.id}/output-0.ts');
+      unawaited(() async {
+        try {
+          await api.dio.get<List<int>>(
+            segUrl,
+            options: Options(
+              headers: {...api.authHeaders, 'Range': 'bytes=0-1'},
+              responseType: ResponseType.bytes,
+              receiveTimeout: const Duration(seconds: 30),
+            ),
+          );
+        } catch (_) {}
+      }());
+    } catch (_) {}
+  }
+
   // ---------------- 轨道切换 ----------------
 
   int _trackIndexForAbsolute(double abs) {
@@ -271,9 +336,7 @@ class PlayerEngine extends ChangeNotifier {
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false}) {
     final t = tracks[ti];
     final ext = t.ext.isNotEmpty ? t.ext : '.mp3';
-    // WMA/转码书：缓存下载的是服务端代理的音频流（mp3/aac），不是 .strm 文本
-    final cacheExt = codecNeedsTranscode(t.codec, t.mimeType) ? '.mp3' : ext;
-    final local = cache.completePath(item!.id, t.ino, cacheExt);
+    final local = cache.completePath(item!.id, t.ino, ext);
     if (local != null) return (url: Uri.file(local).toString(), headers: const {});
     if (!forceProxy && settings.directMode && t.path.startsWith('http')) {
       return (url: t.path, headers: const {});
@@ -641,15 +704,12 @@ class PlayerEngine extends ChangeNotifier {
     for (int i = index + 1; i <= last; i++) {
       final nt = tracks[i];
       if (nt.ino.isEmpty) continue;
+      // 转码书籍（WMA 等）不支持轨道级离线缓存（服务端按需转码，无整文件可下）
+      if (codecNeedsTranscode(nt.codec, nt.mimeType)) continue;
       unawaited(warmTrack(i));
-      // WMA/转码书：缓存下载的是服务端代理的音频流（mp3/aac），不是 .strm 文本
-      final needsTrans = codecNeedsTranscode(nt.codec, nt.mimeType);
-      final ext = needsTrans ? '.mp3' : (nt.ext.isNotEmpty ? nt.ext : '.mp3');
+      final ext = nt.ext.isNotEmpty ? nt.ext : '.mp3';
       String url;
-      if (needsTrans && session != null) {
-        // 转码书缓存：用 HLS 分片（服务端已转码为 aac/mp4）
-        url = api.fullTrackUrl('/hls/${session!.id}/output.m3u8');
-      } else if (settings.directMode && nt.path.startsWith('http')) {
+      if (settings.directMode && nt.path.startsWith('http')) {
         url = nt.path;
       } else if (nt.contentUrl != null && nt.contentUrl!.isNotEmpty) {
         url = api.fullTrackUrl(nt.contentUrl!);

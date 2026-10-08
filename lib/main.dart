@@ -78,22 +78,31 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
       final since = _hiddenAt;
       _hiddenAt = null;
       final awaySec = since == null ? 0 : DateTime.now().difference(since).inSeconds;
-      // 从锁屏/后台回来且有正在播放的书、且不在播放页 → 直达播放器
-      // （锁屏点“正在播放”卡片会唤起 App，awaySec 可能很短；带重试以适配导航就绪时机）
-      // 只在真正播放中才直达，避免手动切回时弹播放页
-      if (widget.app.engine.hasBook && widget.app.loggedIn && !playerPageOpen && widget.app.engine.playing) {
+      // 从锁屏/后台回来且有正在播放的书 → 直达播放页
+      // （锁屏“正在播放”卡片点开会唤起 App；awaySec 可能很短，播放中即触发；带多次重试）
+      if (widget.app.engine.hasBook &&
+          widget.app.loggedIn &&
+          !playerPageOpen &&
+          (widget.app.engine.playing || awaySec >= 2)) {
         _openPlayerSoon();
       }
     }
   }
 
-  /// 回到前台后直达播放页（重试 2 次：引擎/导航就绪时间不确定）
+  DateTime _lastOpenPushAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 回到前台后直达播放页（多次重试：引擎/导航就绪时间不确定）
   void _openPlayerSoon({int attempt = 0}) {
-    Future.delayed(Duration(milliseconds: 450 + attempt * 700), () {
+    if (attempt == 0) {
+      final now = DateTime.now();
+      if (now.difference(_lastOpenPushAt).inSeconds < 3) return; // 防抖
+      _lastOpenPushAt = now;
+    }
+    Future.delayed(Duration(milliseconds: attempt == 0 ? 400 : 700), () {
       if (!mounted || playerPageOpen) return;
       final nav = navigatorKey.currentState;
       if (nav == null) {
-        if (attempt < 2) _openPlayerSoon(attempt: attempt + 1);
+        if (attempt < 4) _openPlayerSoon(attempt: attempt + 1);
         return;
       }
       nav.push(PlayerPage.route());

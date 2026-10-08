@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../cache_manager.dart';
+import '../consts.dart';
 import '../models.dart';
 import '../player_engine.dart';
 import '../state.dart';
@@ -61,6 +62,10 @@ class _BookPageState extends State<BookPage> {
       if (!_didPrewarm) {
         _didPrewarm = true;
         app.prewarm(widget.item, d, abs);
+        // 转码书（WMA 等）：进入详情页即预热转码会话，起播免等冷启动
+        if (d.tracks.any((t) => codecNeedsTranscode(t.codec, t.mimeType))) {
+          unawaited(context.read<PlayerEngine>().prewarmTranscode(widget.item));
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -99,18 +104,20 @@ class _BookPageState extends State<BookPage> {
     final app = context.read<AppState>();
     final d = _d;
     if (d == null) return;
-    var n = 0;
+    var n = 0, skipped = 0;
     for (final i in idx) {
       if (i < 0 || i >= d.tracks.length) continue;
       final t = d.tracks[i];
       if (t.ino.isEmpty) continue;
+      if (codecNeedsTranscode(t.codec, t.mimeType)) { skipped++; continue; }
       final url = (t.path.startsWith('http') && app.settings.directMode)
           ? t.path
           : app.api.fileUrlFor(widget.item.id, t.ino);
       cache.enqueue(bookId: widget.item.id, ino: t.ino, ext: t.ext.isNotEmpty ? t.ext : '.mp3', url: url);
       n++;
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已加入缓存队列（$n 章）')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(skipped > 0 ? '已加入缓存队列（$n 章）· $skipped 章为转码书暂不支持' : '已加入缓存队列（$n 章）')));
   }
 
   void _downloadSheet() {
