@@ -17,6 +17,7 @@ import 'cache_manager.dart';
 import 'consts.dart';
 import 'models.dart';
 import 'settings.dart';
+import 'state.dart';
 
 enum SleepMode { off, endOfChapter, timed }
 
@@ -30,6 +31,7 @@ class PlayerEngine extends ChangeNotifier {
   final Settings settings;
   final AudioPlayer player = AudioPlayer();
   HavenAudioHandler? handler;
+  AppState? owner;
 
   LibItem? item;
   BookDetail? detail;
@@ -152,7 +154,11 @@ class PlayerEngine extends ChangeNotifier {
 
   Future<BookDetail> _loadDetail(String id) async {
     if (detail != null && detail!.id == id) return detail!;
-    return await api.itemDetail(id);
+    final cached = owner?.detailCache[id];
+    if (cached != null) return cached;
+    final d = await api.itemDetail(id);
+    owner?.detailCache[id] = d;
+    return d;
   }
 
   Future<void> _startAt(double abs, {bool autoplay = true}) async {

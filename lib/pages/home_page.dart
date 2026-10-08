@@ -27,6 +27,11 @@ class HomePage extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 178),
           children: [
             const _Header(),
+            if (app.loadingHome && app.continueList.isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: LinearProgressIndicator(minHeight: 3),
+              ),
             _ContinueSection(app: app),
             _StatsSection(stats: app.stats),
             _NewSection(app: app),

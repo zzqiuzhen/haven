@@ -17,7 +17,9 @@ class AppState extends ChangeNotifier {
     required this.settings,
     required this.cache,
     required this.engine,
-  });
+  }) {
+    engine.owner = this;
+  }
 
   Api api;
   final Settings settings;
@@ -132,22 +134,23 @@ class AppState extends ChangeNotifier {
       }).catchError((_) {}));
       final m = await api.me();
       me = m;
-      final list = <(LibItem, MediaProgress)>[];
+      if (libraries.isNotEmpty) {
+        unawaited(loadLibrary(libraries.first.id, page: 0, refresh: true).catchError((_) => <LibItem>[]));
+      }
       final ps = m.mediaProgress.where((p) => !p.hideFromContinue && !p.isFinished).toList();
       ps.sort((a, b) => (b.updatedAt?.millisecondsSinceEpoch ?? 0).compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0));
-      for (final pg in ps) {
-        if (list.length >= 12) break;
+      final top = ps.take(12).toList();
+      final results = await Future.wait(top.map((pg) async {
         final id = pg.libraryItemId;
-        if (id == null || id.isEmpty) continue;
+        if (id == null || id.isEmpty) return null;
         try {
-          final it = await ensureItem(id);
-          list.add((it, pg));
-        } catch (_) {}
-      }
-      continueList = list;
-      if (libraries.isNotEmpty) {
-        await loadLibrary(libraries.first.id, page: 0, refresh: true);
-      }
+          final it = await ensureItem(id).timeout(const Duration(seconds: 8));
+          return (it, pg);
+        } catch (_) {
+          return null;
+        }
+      }));
+      continueList = [for (final r in results) if (r != null) r];
       homeError = null;
     } catch (e) {
       homeError = '$e';

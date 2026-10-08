@@ -43,6 +43,9 @@ def patch_appframework():
 
 def patch_podfile():
     p = os.path.join(IOS, 'Podfile')
+    if not os.path.exists(p):
+        print('Podfile 不存在（使用 Swift Package Manager 模式），跳过')
+        return
     src = open(p, encoding='utf-8').read()
     if re.search(r"#?\s*platform :ios, '[^']+'", src):
         src = re.sub(r"#?\s*platform :ios, '[^']+'", "platform :ios, '16.0'", src)
