@@ -22,6 +22,8 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _desc = true;
   bool _loading = false;
   final _scroll = ScrollController();
+  final _attempted = <String>{};
+  String? _loadError;
 
   static const _sortNames = {
     'addedAt': '最近添加',
@@ -34,14 +36,6 @@ class _LibraryPageState extends State<LibraryPage> {
   void initState() {
     super.initState();
     _scroll.addListener(_maybeMore);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final app = context.read<AppState>();
-      final id = _libId ?? (app.libraries.isNotEmpty ? app.libraries.first.id : null);
-      if (id != null && _libId != id) {
-        setState(() => _libId = id);
-        if ((app.libItems[id] ?? const []).isEmpty) _load(refresh: true);
-      }
-    });
   }
 
   @override
@@ -54,13 +48,17 @@ class _LibraryPageState extends State<LibraryPage> {
     final app = context.read<AppState>();
     final id = _libId;
     if (id == null || _loading) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
       final loaded = (app.libItems[id] ?? const <LibItem>[]).length;
       final page = refresh ? 0 : loaded ~/ 50;
       await app.loadLibrary(id, page: page, refresh: refresh, sort: _sort, desc: _desc);
     } catch (e) {
       if (mounted) {
+        setState(() => _loadError = '$e');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('加载失败：$e')));
       }
     }
@@ -85,6 +83,16 @@ class _LibraryPageState extends State<LibraryPage> {
     final app = context.watch<AppState>();
     final id = _libId ?? (app.libraries.isNotEmpty ? app.libraries.first.id : null);
     final items = id == null ? const <LibItem>[] : (app.libItems[id] ?? const <LibItem>[]);
+
+    if (id != null && _libId != id) {
+      _libId = id;
+    }
+    if (id != null && !_loading && !_attempted.contains(id) && (app.libItems[id] ?? const []).isEmpty) {
+      _attempted.add(id);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    }
 
     return SafeArea(
       bottom: false,
@@ -140,8 +148,6 @@ class _LibraryPageState extends State<LibraryPage> {
                     selected: sel,
                     onSelected: (_) {
                       setState(() => _libId = l.id);
-                      final cached = (app.libItems[l.id] ?? const []).isEmpty;
-                      if (cached) _load(refresh: true);
                     },
                   );
                 },
@@ -152,7 +158,9 @@ class _LibraryPageState extends State<LibraryPage> {
             child: RefreshIndicator(
               onRefresh: () => _load(refresh: true),
               child: items.isEmpty
-                  ? (app.loadingHome || _loading ? const LoadingView() : const EmptyView('书库是空的'))
+                  ? (app.loadingHome || _loading
+                      ? const LoadingView()
+                      : EmptyView(_loadError != null ? '加载失败：$_loadError' : '书库是空的'))
                   : GridView.builder(
                       controller: _scroll,
                       padding: const EdgeInsets.fromLTRB(20, 6, 20, 180),

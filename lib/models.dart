@@ -73,13 +73,25 @@ class BookMeta {
   String get narratorText => narrators.join(' / ');
   String get seriesText => series.join(' · ');
 
-  static List<String> _names(dynamic v) => ((v as List?) ?? const [])
-      .map((e) => e is Map ? _s(e['name']) : _s(e))
-      .where((e) => e.isNotEmpty)
-      .toList();
+  static List<String> _names(dynamic v) {
+    if (v == null) return const [];
+    if (v is String) {
+      final s = v.trim();
+      return s.isEmpty ? const [] : [s];
+    }
+    if (v is Map) {
+      final n = _s(v['name']);
+      return n.isEmpty ? const [] : [n];
+    }
+    if (v is List) {
+      return v.map((e) => e is Map ? _s(e['name']) : _s(e)).where((e) => e.isNotEmpty).toList();
+    }
+    return const [];
+  }
 
   factory BookMeta.fromJson(Map j) {
-    final seriesRaw = ((j['series'] as List?) ?? const [])
+    final seriesList = (j['series'] is List) ? (j['series'] as List) : const [];
+    final seriesRaw = seriesList
         .map((e) => e is Map ? '${_s(e['name'])}${e['sequence'] != null ? ' #${e['sequence']}' : ''}' : _s(e))
         .where((e) => e.isNotEmpty)
         .toList();

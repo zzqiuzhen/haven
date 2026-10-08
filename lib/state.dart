@@ -39,6 +39,7 @@ class AppState extends ChangeNotifier {
   bool booted = false;
   bool loadingHome = false;
   String? homeError;
+  String debugInfo = '';
   int tab = 0;
 
   bool get loggedIn => me != null;
@@ -135,7 +136,14 @@ class AppState extends ChangeNotifier {
       final m = await api.me();
       me = m;
       if (libraries.isNotEmpty) {
-        unawaited(loadLibrary(libraries.first.id, page: 0, refresh: true).catchError((_) => <LibItem>[]));
+        try {
+          final loaded = await loadLibrary(libraries.first.id, page: 0, refresh: true);
+          debugInfo = 'L=${libraries.length} I=${loaded.length}';
+        } catch (e) {
+          debugInfo = 'L=${libraries.length} E=$e';
+        }
+      } else {
+        debugInfo = 'L=0';
       }
       final ps = m.mediaProgress.where((p) => !p.hideFromContinue && !p.isFinished).toList();
       ps.sort((a, b) => (b.updatedAt?.millisecondsSinceEpoch ?? 0).compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0));
