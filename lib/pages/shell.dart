@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../player_engine.dart';
 import '../state.dart';
 import '../theme.dart';
+import '../util.dart';
 import '../widgets/common.dart';
 import 'home_page.dart';
 import 'library_page.dart';
@@ -87,7 +88,7 @@ class BottomDock extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 2),
-                            Text(engine.track?.title ?? '',
+                            Text(engine.item == null ? '' : trackDisplayTitle(engine.item!.meta.title, engine.track?.title),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 11, color: C.text2)),

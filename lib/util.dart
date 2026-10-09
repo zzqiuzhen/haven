@@ -90,3 +90,18 @@ String cleanHtml(String? html) {
   t = t.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
   return t;
 }
+
+/// 曲目标题显示：若标题以书名开头（如“大奉打更人 第0135集 秘辛-”），去掉书名前缀，只显示集信息
+String trackDisplayTitle(String? bookTitle, String? trackTitle) {
+  final t = (trackTitle ?? '').trim();
+  final b = (bookTitle ?? '').trim();
+  if (t.isEmpty) return b;
+  if (b.isNotEmpty && t.startsWith(b)) {
+    var rest = t.substring(b.length).trim();
+    while (rest.isNotEmpty && (rest.startsWith('·') || rest.startsWith('-') || rest.startsWith('，') || rest.startsWith(','))) {
+      rest = rest.substring(1).trim();
+    }
+    if (rest.isNotEmpty) return rest;
+  }
+  return t;
+}

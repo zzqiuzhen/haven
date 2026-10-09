@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../models.dart';
 import '../state.dart';
+import '../cache_manager.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/global_bookmarks_sheet.dart';
@@ -17,10 +18,29 @@ class LibraryPage extends StatefulWidget {
   State<LibraryPage> createState() => _LibraryPageState();
 }
 
+Widget _libChip({required bool darkChip, required String label, required bool sel, required VoidCallback onTap}) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: R.pill,
+        gradient: sel ? const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1F66C9)]) : null,
+        color: sel ? null : (darkChip ? C.dCard.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.55)),
+        border: sel ? null : Border.all(color: darkChip ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.7)),
+        boxShadow: sel ? [BoxShadow(color: C.primary.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))] : null,
+      ),
+      child: Text(label,
+          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : (darkChip ? C.dText : const Color(0xFF333D55)))),
+    ),
+  );
+}
+
 class _LibraryPageState extends State<LibraryPage> {
   String? _libId;
   String _sort = 'addedAt';
   bool _desc = true;
+  bool _downloadedOnly = false;
   bool _loading = false;
   final _scroll = ScrollController();
   final _attempted = <String>{};
@@ -107,6 +127,11 @@ class _LibraryPageState extends State<LibraryPage> {
       });
     }
 
+    final cacheMgr = context.watch<CacheManager>();
+    final shownItems = _downloadedOnly
+        ? items.where((it) => cacheMgr.cachedInosFor(it.id).isNotEmpty).toList()
+        : items;
+
     return SafeArea(
       bottom: false,
       child: Column(
@@ -118,20 +143,21 @@ class _LibraryPageState extends State<LibraryPage> {
               children: [
                 const Text('书库', style: TS.h1),
                 const Spacer(),
-                IconButton(
-                  tooltip: '书签',
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.bookmarks_outlined, size: 20, color: C.text2),
-                  onPressed: () => showGlobalBookmarksSheet(context: context),
-                ),
                 PopupMenuButton<String>(
                   initialValue: _sort,
                   onSelected: (v) {
-                    setState(() => _sort = v);
+                    if (v == '__desc' || v == '__asc') {
+                      setState(() => _desc = v == '__desc');
+                    } else {
+                      setState(() => _sort = v);
+                    }
                     _load(refresh: true);
                   },
                   itemBuilder: (_) => [
                     for (final e in _sortNames.entries) PopupMenuItem(value: e.key, child: Text(e.value)),
+                    const PopupMenuDivider(),
+                    CheckedPopupMenuItem(value: '__desc', checked: _desc, child: const Text('降序')),
+                    CheckedPopupMenuItem(value: '__asc', checked: !_desc, child: const Text('升序')),
                   ],
                   child: Glass(
                     radius: 999,
@@ -143,54 +169,54 @@ class _LibraryPageState extends State<LibraryPage> {
                     ]),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(_desc ? Icons.arrow_downward : Icons.arrow_upward, size: 18, color: C.text2),
-                  onPressed: () {
-                    setState(() => _desc = !_desc);
-                    _load(refresh: true);
-                  },
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: () => showGlobalBookmarksSheet(context: context),
+                  child: Glass(
+                    radius: 999,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    child: const Icon(Icons.bookmark_outline, size: 18, color: C.text2),
+                  ),
                 ),
               ],
             ),
           ),
-          if (app.libraries.length > 1)
-            SizedBox(
-              height: 40,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: app.libraries.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, i) {
-                  final l = app.libraries[i];
-                  final sel = l.id == id;
-                  final darkChip = Theme.of(context).brightness == Brightness.dark;
-                  return GestureDetector(
-                    onTap: () => setState(() => _libId = l.id),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: R.pill,
-                        gradient: sel ? const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1F66C9)]) : null,
-                        color: sel ? null : (darkChip ? C.dCard.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.55)),
-                        border: sel ? null : Border.all(color: darkChip ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.7)),
-                        boxShadow: sel ? [BoxShadow(color: C.primary.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))] : null,
-                      ),
-                      child: Text(l.name,
-                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : (darkChip ? C.dText : const Color(0xFF333D55)))),
-                    ),
+          SizedBox(
+            height: 40,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: app.libraries.length + 1,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, i) {
+                final darkChip = Theme.of(context).brightness == Brightness.dark;
+                if (i >= app.libraries.length) {
+                  return _libChip(
+                    darkChip: darkChip,
+                    label: _downloadedOnly ? '✓ 已下载' : '已下载',
+                    sel: _downloadedOnly,
+                    onTap: () => setState(() => _downloadedOnly = !_downloadedOnly),
                   );
-                },
-              ),
+                }
+                final l = app.libraries[i];
+                final sel = l.id == id;
+                return _libChip(
+                  darkChip: darkChip,
+                  label: sel ? '✓ ${l.name}' : l.name,
+                  sel: sel,
+                  onTap: () => setState(() => _libId = l.id),
+                );
+              },
             ),
+          ),
           const SizedBox(height: 8),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _load(refresh: true),
-              child: items.isEmpty
+              child: shownItems.isEmpty
                   ? (app.loadingHome || _loading
                       ? const LoadingView()
-                      : EmptyView(_loadError != null ? '加载失败：$_loadError' : '书库是空的'))
+                      : EmptyView(_loadError != null ? '加载失败：$_loadError' : (_downloadedOnly ? '还没有已下载的书籍' : '书库是空的')))
                   : GridView.builder(
                       controller: _scroll,
                       padding: const EdgeInsets.fromLTRB(20, 6, 20, 220),
@@ -200,12 +226,12 @@ class _LibraryPageState extends State<LibraryPage> {
                         mainAxisSpacing: 18,
                         childAspectRatio: 0.68,
                       ),
-                      itemCount: items.length + (_loading ? 1 : 0),
+                      itemCount: shownItems.length + (_loading ? 1 : 0),
                       itemBuilder: (context, i) {
-                        if (i >= items.length) {
+                        if (i >= shownItems.length) {
                           return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
                         }
-                        return _GridCard(item: items[i], app: app);
+                        return _GridCard(item: shownItems[i]);
                       },
                     ),
             ),
@@ -217,14 +243,12 @@ class _LibraryPageState extends State<LibraryPage> {
 }
 
 class _GridCard extends StatelessWidget {
-  const _GridCard({required this.item, required this.app});
+  const _GridCard({required this.item});
   final LibItem item;
-  final AppState app;
 
   @override
   Widget build(BuildContext context) {
-    final pg = app.progressOf(item.id);
-    final frac = pg == null ? 0.0 : (pg.progress > 0 ? pg.progress : (pg.duration > 0 ? pg.currentTime / pg.duration : 0)).clamp(0.0, 1.0);
+    final cachedN = context.watch<CacheManager>().cachedInosFor(item.id).length;
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookPage(item: item))),
       child: Column(
@@ -234,19 +258,18 @@ class _GridCard extends StatelessWidget {
             return Stack(
               children: [
                 HavenCover(item.id, item.meta.title, width: cons.maxWidth, height: cons.maxWidth, radius: 12),
-                if (frac > 0.005)
+                if (cachedN > 0)
                   Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        padding: const EdgeInsets.fromLTRB(6, 3, 6, 3),
-                        child: Text('${(frac * 100).toStringAsFixed(0)}%',
-                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                    left: 7,
+                    bottom: 7,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(8),
                       ),
+                      child: Text('已缓存 $cachedN 集',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
                     ),
                   ),
               ],

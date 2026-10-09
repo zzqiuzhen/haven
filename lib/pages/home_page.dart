@@ -14,6 +14,7 @@ import '../util.dart';
 import '../widgets/common.dart';
 import 'book_page.dart';
 import 'player_page.dart';
+import 'recent_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -87,10 +88,18 @@ class _Header extends StatelessWidget {
         const BlobBackground(height: 140),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 22, 20, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
               const Text('发现', style: TS.h1),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => context.read<AppState>().setTab(3),
+                child: Glass(
+                  radius: 999,
+                  padding: const EdgeInsets.all(9),
+                  child: const Icon(Icons.person_outline_rounded, size: 20, color: C.text2),
+                ),
+              ),
             ],
           ),
         ),
@@ -108,22 +117,16 @@ class _ContinueSection extends StatelessWidget {
     if (app.continueList.isEmpty) {
       return const SizedBox.shrink();
     }
+    final (it, pg) = app.continueList.first;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeader('继续收听'),
-        SizedBox(
-          height: 104,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: app.continueList.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, i) {
-              final (it, pg) = app.continueList[i];
-              return _ContinueCard(item: it, pg: pg);
-            },
-          ),
+        SectionHeader('继续收听', onMore: () {
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RecentPage()));
+        }),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: _ContinueCard(item: it, pg: pg),
         ),
       ],
     );
@@ -151,40 +154,47 @@ class _ContinueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final frac = (pg.progress > 0 ? pg.progress : (pg.duration > 0 ? pg.currentTime / pg.duration : 0)).clamp(0.0, 1.0).toDouble();
+    final remain = (pg.duration - pg.currentTime).clamp(0.0, double.infinity).toDouble();
+    final sub = '${item.meta.authorText}${item.meta.narrators.isNotEmpty ? ' · ${item.meta.narratorText} 演播' : ''}';
     return GestureDetector(
       onTap: () => _open(context),
-      child: SizedBox(
-        width: 286,
-        child: Glass(
-          radius: 20,
-          padding: const EdgeInsets.all(12),
+      child: Glass(
+        radius: 20,
+        padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            HavenCover(item.id, item.meta.title, size: 78, radius: 12),
-            const SizedBox(width: 12),
+            HavenCover(item.id, item.meta.title, size: 96, radius: 16),
+            const SizedBox(width: 13),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 3),
-                  Text(item.meta.authorText, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: C.text2)),
-                  const SizedBox(height: 8),
-                  ProgressLine(frac, height: 4),
-                  const SizedBox(height: 5),
-                  Row(
-                    children: [
-                      Text(fmtDur(pg.currentTime), style: TS.mini),
-                      const Spacer(),
-                      Text('${(frac * 100).toStringAsFixed(0)}%', style: TS.mini),
-                    ],
-                  ),
+                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: C.text2)),
+                  const SizedBox(height: 11),
+                  ProgressLine(frac, height: 5),
+                  const SizedBox(height: 7),
+                  Text('已听 ${(frac * 100).toStringAsFixed(0)}% · 还剩 ${fmtDur(remain)}', style: const TextStyle(fontSize: 11, color: C.text2)),
                 ],
               ),
             ),
+            const SizedBox(width: 13),
+            GestureDetector(
+              onTap: () => _open(context),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF33456F), Color(0xFF0F1830)]),
+                  boxShadow: [BoxShadow(color: Color(0x590F1830), blurRadius: 12, offset: Offset(0, 5))],
+                ),
+                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 26),
+              ),
+            ),
           ],
-          ),
         ),
       ),
     );
@@ -233,8 +243,6 @@ class _StatsSection extends StatelessWidget {
               for (final c in cards)
                 Glass(
                   radius: 18,
-                  tint: c.$4,
-                  alpha: dark ? 0.18 : 0.22,
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,7 +253,7 @@ class _StatsSection extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
-                          Text(c.$2, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                          Text(c.$2, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
                           const SizedBox(width: 3),
                           Text(c.$3, style: const TextStyle(fontSize: 12, color: C.text2)),
                         ],
@@ -269,41 +277,45 @@ class _NewSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final firstLib = app.libraries.isNotEmpty ? app.libraries.first : null;
     if (firstLib == null) return const SizedBox.shrink();
-    final items = (app.libItems[firstLib.id] ?? const <LibItem>[]).take(12).toList();
+    final items = (app.libItems[firstLib.id] ?? const <LibItem>[]).take(3).toList();
     if (items.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader('最新入库', onMore: () => app.setTab(1)),
-        SizedBox(
-          height: 186,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, i) {
-              final it = items[i];
-              return GestureDetector(
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookPage(item: it))),
-                child: SizedBox(
-                  width: 112,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      HavenCover(it.id, it.meta.title, size: 112, radius: 12),
-                      const SizedBox(height: 7),
-                      Text(it.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 2),
-                      Text(it.meta.authorText, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: C.text2)),
-                    ],
-                  ),
-                ),
-              );
-            },
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) const SizedBox(width: 12),
+                Expanded(child: _NewTile(item: items[i])),
+              ],
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _NewTile extends StatelessWidget {
+  const _NewTile({required this.item});
+  final LibItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookPage(item: item))),
+      child: Column(
+        children: [
+          LayoutBuilder(builder: (context, cons) {
+            return HavenCover(item.id, item.meta.title, width: cons.maxWidth, height: cons.maxWidth, radius: 15);
+          }),
+          const SizedBox(height: 7),
+          Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 }

@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 
 import '../consts.dart';
 import '../state.dart';
+import '../cache_manager.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'downloads_page.dart';
@@ -28,6 +29,7 @@ class MePage extends StatelessWidget {
     final me = app.me;
     final dark = Theme.of(context).brightness == Brightness.dark;
 
+    final cacheMgr = context.watch<CacheManager>();
     return SafeArea(
       bottom: false,
       child: ListView(
@@ -79,7 +81,7 @@ class MePage extends StatelessWidget {
             _MenuItem(Icons.history, C.teal, '阅读记录', '全部收听历史', () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RecentPage()));
             }),
-            _MenuItem(Icons.download_outlined, C.purple, '下载与缓存', '离线缓存管理', () {
+            _MenuItem(Icons.download_outlined, C.purple, '下载与缓存', _downloadedLabel(app, cacheMgr), () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsPage()));
             }),
           ]),
@@ -119,6 +121,16 @@ class MePage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _downloadedLabel(AppState app, CacheManager cache) {
+    final ids = <String>{};
+    for (final l in app.libItems.values) {
+      for (final it in l) {
+        if (cache.cachedInosFor(it.id).isNotEmpty) ids.add(it.id);
+      }
+    }
+    return ids.isEmpty ? '离线缓存管理' : '已下载 ${ids.length} 本';
   }
 
   void _confirmLogout(BuildContext context, AppState app) {

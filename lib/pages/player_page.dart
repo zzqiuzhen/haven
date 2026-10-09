@@ -177,7 +177,7 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                       Expanded(
                         child: Column(
                           children: [
-                            Text(track?.title ?? item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                            Text(track == null ? item.meta.title : trackDisplayTitle(item.meta.title, track.title), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 2),
                             Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: C.text2)),
                           ],
@@ -210,7 +210,7 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                           Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 5),
                           Text(
-                            '${item.meta.authorText}${engine.tracks.isEmpty ? '' : ' · ${engine.index + 1}/${engine.tracks.length}'}',
+                            '${item.meta.authorText}${item.meta.narrators.isNotEmpty ? ' · ${item.meta.narratorText} 演播' : ''}${engine.tracks.isEmpty ? '' : ' · ${engine.index + 1}/${engine.tracks.length}'}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12.5, color: C.text2),
@@ -230,6 +230,7 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                                   decoration: BoxDecoration(
                                     color: C.teal.withValues(alpha: 0.10),
                                     borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: C.teal.withValues(alpha: 0.30)),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -312,7 +313,7 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                           children: [
                             Text(fmtDur(chapPos), style: TS.mini.copyWith(fontSize: 12)),
                             const Spacer(),
-                            Text(fmtDur(chapDur), style: TS.mini.copyWith(fontSize: 12)),
+                            Text('-${fmtDur((chapDur - chapPos).clamp(0.0, double.infinity))}', style: TS.mini.copyWith(fontSize: 12)),
                           ],
                         ),
                         const SizedBox(height: 10),
@@ -330,10 +331,10 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                                   child: Container(
                                     width: 72,
                                     height: 72,
-                                    decoration: BoxDecoration(
+                                    decoration: const BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: C.navy,
-                                      boxShadow: [BoxShadow(color: C.navy.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
+                                      gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF33456F), Color(0xFF0F1830)]),
+                                      boxShadow: [BoxShadow(color: Color(0x590F1830), blurRadius: 18, offset: Offset(0, 8))],
                                     ),
                                     child: Icon(engine.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 42, color: Colors.white),
                                   ),
