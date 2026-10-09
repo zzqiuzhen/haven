@@ -82,9 +82,11 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
       final since = _hiddenAt;
       _hiddenAt = null;
       final awaySec = since == null ? 0 : DateTime.now().difference(since).inSeconds;
-      // 只在「离开前台时正处于播放页」才回前台直达播放页；
-      // 在书库/搜索等页面被系统间接触发 inactive→resumed（通知中心、来电横幅等）时不再乱跳
-      if (wasPlayerOpen &&
+      // 回前台直达播放页的两种场景：
+      // 1) 离开时正处于播放页（保持原行为）
+      // 2) 锁屏/后台停留较久（≥10 秒）且有书加载 —— 覆盖"锁屏播放器卡片点开、解锁后直达播放页"
+      //    （几秒钟的短暂切出——通知中心/控制中心等——仍然不跳，保留 v1.3.9 的防误触）
+      if ((wasPlayerOpen || awaySec >= 10) &&
           widget.app.engine.hasBook &&
           widget.app.loggedIn &&
           !playerPageOpen &&
