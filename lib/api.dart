@@ -279,8 +279,10 @@ class Api {
     }
   }
 
-  /// 快速探测 URL 是否可达（用于决定是否走“极速直连”；1.2 秒超时、不跟随跳转）
-  Future<bool> reachable(String trackUrl, {Duration timeout = const Duration(milliseconds: 1200)}) async {
+  /// 快速探测 URL 是否可达（用于决定是否走“极速直连”）
+  /// 硬上限 [timeout] 封顶：超时立即取消请求并返回 false（TCP 挂起不会拖住调用方）
+  Future<bool> reachable(String trackUrl, {Duration timeout = const Duration(milliseconds: 1500)}) async {
+    final ct = CancelToken();
     try {
       final r = await dio.get(trackUrl,
           options: Options(
@@ -289,10 +291,14 @@ class Api {
             receiveTimeout: timeout,
             sendTimeout: timeout,
             headers: {...authHeaders, 'Range': 'bytes=0-1'},
-          ));
+          ),
+          cancelToken: ct).timeout(timeout);
       final c = r.statusCode ?? 0;
       return c >= 200 && c < 400;
     } catch (_) {
+      try {
+        ct.cancel('probe timeout');
+      } catch (_) {}
       return false;
     }
   }

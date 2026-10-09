@@ -48,6 +48,7 @@ class PlayerEngine extends ChangeNotifier {
   bool _lastSourceDirect = false;
   bool _usedFallback = false;
   bool? _directOk; // 直连可用性：null=未验证 / true=可用 / false=不可用（本次运行内有效）
+  Future<bool>? _directProbing; // 直连探测单飞（多个调用共享同一探测）
   final Set<String> _directBadInos = {}; // 直连打不开的具体章节（CDN attachment 等），跳过直连走服务端
   int _directFailCount = 0;
   int _loadSeq = 0; // 加载序号：后发加载取代先发，先发的失败/中断静默忽略
@@ -193,6 +194,11 @@ class PlayerEngine extends ChangeNotifier {
         _startSyncLoop();
       } else {
         // 直连/代理书：立即起播（缓存命中秒开，无需等会话），会话后台创建
+        if (settings.directMode) {
+          // 提前做一次直连就绪探测（后台跑，等用户点章节时已有结论）
+          final hp = detail!.tracks.where((t) => t.path.startsWith('http'));
+          if (hp.isNotEmpty) unawaited(_ensureDirectProbed(hp.first.path));
+        }
         await _startAt(start, autoplay: autoplay);
         unawaited(_ensureSession());
       }
@@ -262,6 +268,8 @@ class PlayerEngine extends ChangeNotifier {
       index = _trackIndexForAbsolute(abs);
       _absolute = abs;
       if (autoplay) unawaited(player.play());
+      // 触发服务端窗口本地化（转码书：探测当前集所在文件）
+      unawaited(warmTrack(index));
     } else {
       final ti = _trackIndexForAbsolute(abs);
       final inTrack = max(0.0, abs - tracks[ti].startOffset);
@@ -386,6 +394,20 @@ class PlayerEngine extends ChangeNotifier {
     if (_directFailCount >= 2) _directOk = false; // 多次失败视为网络层不可达，本次运行不再尝试直连
   }
 
+  /// 直连就绪探测：≤1.5 秒快速判断直连地址是否可达；结果缓存（一次/运行）
+  Future<bool> _ensureDirectProbed(String url) {
+    if (_directOk != null) return Future.value(_directOk!);
+    return _directProbing ??= api.reachable(url).then((ok) {
+      _directOk = ok;
+      _directProbing = null;
+      if (!ok) debugPrint('直连不可达，本次运行使用服务端路径');
+      return ok;
+    }).catchError((_) {
+      _directProbing = null;
+      return false;
+    });
+  }
+
   /// 回退到服务端地址重试（单飞：同一时间只允许一个回退重试在途）
   Future<void> _recoverToServer(Track t, {required double inTrack, required bool autoplay, required bool wasDirect}) async {
     if (_recovering || _closing) return;
@@ -398,6 +420,16 @@ class PlayerEngine extends ChangeNotifier {
     } finally {
       _recovering = false;
     }
+  }
+
+  String _friendlyPlayError(String raw) {
+    if (raw.contains('-1004')) {
+      return '无法连接服务器（-1004）：请检查手机网络（家中 WiFi 或 Tailscale）后重试';
+    }
+    if (raw.contains('-1001') || raw.toLowerCase().contains('timed out')) {
+      return '网络超时：请检查手机网络后重试';
+    }
+    return '无法播放：$raw';
   }
 
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false}) {
@@ -426,6 +458,14 @@ class PlayerEngine extends ChangeNotifier {
   Future<void> _playTrackIndex(int ti, {double inTrack = 0, bool autoplay = true, bool forceProxy = false}) async {
     if (ti < 0 || ti >= tracks.length) return;
     final t = tracks[ti];
+    // 首次使用直连前做一次快速就绪探测（≤1.5s，单飞）；不可达则本次运行干脆走服务端
+    if (!forceProxy &&
+        settings.directMode &&
+        _directOk == null &&
+        t.path.startsWith('http') &&
+        !_directBadInos.contains(t.ino)) {
+      await _ensureDirectProbed(t.path);
+    }
     final src = _sourceForTrack(ti, forceProxy: forceProxy);
     index = ti;
     _absolute = t.startOffset + inTrack;
@@ -459,7 +499,7 @@ class PlayerEngine extends ChangeNotifier {
           return;
         }
       }
-      error = '无法播放：$e';
+      error = _friendlyPlayError(msg);
       notifyListeners();
       return;
     } finally {
@@ -564,6 +604,8 @@ class PlayerEngine extends ChangeNotifier {
       await player.seek(Duration(milliseconds: (tgt * 1000).round()));
       index = _trackIndexForAbsolute(tgt);
       _reportMediaItem();
+      // 触发服务端窗口本地化（转码书：探测当前集所在文件）
+      unawaited(warmTrack(index));
       notifyListeners();
     } else {
       final ti = _trackIndexForAbsolute(tgt);
@@ -603,6 +645,8 @@ class PlayerEngine extends ChangeNotifier {
       if (ti != index) {
         index = ti;
         _reportMediaItem();
+        // 转码书自然跨集：触发服务端窗口本地化滑动
+        unawaited(warmTrack(ti));
       }
     } else {
       final t = track;
@@ -663,7 +707,7 @@ class PlayerEngine extends ChangeNotifier {
         return;
       }
     }
-    error = '播放出错：$e';
+    error = _friendlyPlayError('$e');
     notifyListeners();
   }
 
@@ -782,20 +826,29 @@ class PlayerEngine extends ChangeNotifier {
 
   // ---------------- 预取 / 预热 ----------------
 
-  /// 预热某章：直连可用时先走直连预热（顺带预检 CDN 是否会返回 attachment——
-  /// 这类文件 AVPlayer 会拒播，提前拉黑避免用户点击时中断）；否则走服务端预热。
+  /// 预热某章（同时承担“触发服务端窗口本地化”的职责）：
+  /// - 直连已确认可用：走直连预热（顺带预检 CDN attachment，提前拉黑这类文件）
+  /// - 转码书（WMA 等）：探测 /file/ 入口，镜像未命中时服务端会写入“窗口本地化”队列
+  /// - 其他：走服务端预热（解析 302 直链）
   Future<void> warmTrack(int ti) async {
     if (ti < 0 || ti >= tracks.length) return;
     final t = tracks[ti];
     try {
+      if (codecNeedsTranscode(t.codec, t.mimeType)) {
+        // 转码书：探测该集的服务端文件入口（镜像未命中 → 服务端写入窗口本地化队列；
+        // 已本地化 → mode=local，2 字节极轻量）
+        if (item != null && t.ino.isNotEmpty) {
+          await api.warm(api.fileUrlFor(item!.id, t.ino));
+        }
+        return;
+      }
       final canTryDirect = settings.directMode &&
-          _directOk != false &&
+          _directOk == true &&
           !_directBadInos.contains(t.ino) &&
           t.path.startsWith('http');
       if (canTryDirect) {
         final r = await api.warm(t.path);
         if (r != null) {
-          if (_directOk == null) _directOk = true;
           final cd = (r.headers.value('content-disposition') ?? '').toLowerCase();
           if (cd.contains('attachment')) {
             _directBadInos.add(t.ino);
@@ -814,7 +867,8 @@ class PlayerEngine extends ChangeNotifier {
   }
 
   /// 预取后续章节：[probe] 控制是否顺带做 2 字节预热请求；
-  /// 下载统一走服务端地址（本地镜像优先服务，稳定且快）。
+  /// 普通书下载走服务端地址（本地镜像优先，稳定且快）；
+  /// 转码书对“下一集”做一次探测，触发服务端按窗口本地化（滑动加速）。
   void _warmAhead({bool probe = true}) {
     final it = item;
     if (it == null || tracks.isEmpty) return;
@@ -825,8 +879,13 @@ class PlayerEngine extends ChangeNotifier {
     for (int i = index + 1; i <= last; i++) {
       final nt = tracks[i];
       if (nt.ino.isEmpty) continue;
-      // 转码书籍（WMA 等）不支持轨道级离线缓存（服务端按需转码，无整文件可下）
-      if (codecNeedsTranscode(nt.codec, nt.mimeType)) continue;
+      final isTrans = codecNeedsTranscode(nt.codec, nt.mimeType);
+      if (isTrans) {
+        // 转码书（WMA 等）无整文件可缓存；对“下一集”发一次探测，
+        // 触发服务端窗口本地化（当前集+后 5 集），随进度滑动
+        if (probe && i == index + 1) unawaited(warmTrack(i));
+        continue;
+      }
       if (probe) unawaited(warmTrack(i));
       final ext = nt.ext.isNotEmpty ? nt.ext : '.mp3';
       final url = (nt.contentUrl != null && nt.contentUrl!.isNotEmpty) ? api.fullTrackUrl(nt.contentUrl!) : api.fileUrlFor(it.id, nt.ino);
