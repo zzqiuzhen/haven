@@ -81,6 +81,18 @@ class _LibraryPageState extends State<LibraryPage> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    // 首页“我的书库”直达：消费待选书库并加载
+    final pend = app.pendingLibId;
+    if (pend != null) {
+      app.pendingLibId = null;
+      if (pend != _libId) {
+        _libId = pend;
+        _attempted.add(pend);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _load(refresh: true);
+        });
+      }
+    }
     final id = _libId ?? (app.libraries.isNotEmpty ? app.libraries.first.id : null);
     final items = id == null ? const <LibItem>[] : (app.libItems[id] ?? const <LibItem>[]);
 

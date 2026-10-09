@@ -308,7 +308,7 @@ class _LibSection extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: GestureDetector(
-                    onTap: () => app.setTab(1),
+                    onTap: () => app.openLibrary(app.libraries[i].id),
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(

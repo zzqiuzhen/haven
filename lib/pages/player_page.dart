@@ -121,7 +121,13 @@ class _PlayerPageState extends State<PlayerPage> {
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                   child: Row(
                     children: [
-                      _RoundIcon(icon: Icons.keyboard_arrow_down, onTap: () => Navigator.pop(context)),
+                      SizedBox(
+                        width: 84,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _RoundIcon(icon: Icons.keyboard_arrow_down, onTap: () => Navigator.pop(context)),
+                        ),
+                      ),
                       Expanded(
                         child: Column(
                           children: [
@@ -257,23 +263,29 @@ class _PlayerPageState extends State<PlayerPage> {
                         const SizedBox(height: 10),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _SeekBtn(icon: Icons.replay, label: '${settings.rewindStep}s', onTap: () => engine.seekRelative(-settings.rewindStep.toDouble())),
-                            _RoundIcon(icon: Icons.skip_previous_rounded, size: 40, iconSize: 30, onTap: () => engine.prevTrack()),
-                            GestureDetector(
-                              onTap: engine.toggle,
-                              child: Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: C.navy,
-                                  boxShadow: [BoxShadow(color: C.navy.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
+                            SizedBox(height: 44, child: Center(child: _RoundIcon(icon: Icons.skip_previous_rounded, size: 40, iconSize: 30, onTap: () => engine.prevTrack()))),
+                            SizedBox(
+                              height: 44,
+                              child: Center(
+                                child: GestureDetector(
+                                  onTap: engine.toggle,
+                                  child: Container(
+                                    width: 72,
+                                    height: 72,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: C.navy,
+                                      boxShadow: [BoxShadow(color: C.navy.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
+                                    ),
+                                    child: Icon(engine.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 42, color: Colors.white),
+                                  ),
                                 ),
-                                child: Icon(engine.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 42, color: Colors.white),
                               ),
                             ),
-                            _RoundIcon(icon: Icons.skip_next_rounded, size: 40, iconSize: 30, onTap: () => engine.nextTrack(userInitiated: true)),
+                            SizedBox(height: 44, child: Center(child: _RoundIcon(icon: Icons.skip_next_rounded, size: 40, iconSize: 30, onTap: () => engine.nextTrack(userInitiated: true)))),
                             _SeekBtn(icon: Icons.forward, label: '${settings.forwardStep}s', onTap: () => engine.seekRelative(settings.forwardStep.toDouble())),
                           ],
                         ),
@@ -601,8 +613,12 @@ class _SeekBtn extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 30),
-          const SizedBox(height: 2),
+          // 44px 图标区：与上一集/下一集/播放按钮同一垂直中心
+          SizedBox(
+            height: 44,
+            child: Center(child: Icon(icon, size: 30)),
+          ),
+          const SizedBox(height: 1),
           Text(label, style: const TextStyle(fontSize: 10, color: C.text2)),
         ],
       ),

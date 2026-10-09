@@ -105,12 +105,6 @@ class BottomDock extends StatelessWidget {
                   ),
                 ),
               ),
-              Divider(
-                height: 1,
-                color: (dark ? Colors.white : Colors.black).withValues(alpha: 0.06),
-                indent: 10,
-                endIndent: 10,
-              ),
               const SizedBox(height: 2),
             ],
             SizedBox(

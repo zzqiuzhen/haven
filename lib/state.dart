@@ -41,6 +41,8 @@ class AppState extends ChangeNotifier {
 
   bool booted = false;
   bool loadingHome = false;
+  /// 首页“我的书库”点击后待打开的书库 id（书库页消费）
+  String? pendingLibId;
   String? homeError;
   String debugInfo = '';
   int tab = 0;
@@ -312,6 +314,12 @@ class AppState extends ChangeNotifier {
   void setTab(int i) {
     tab = i;
     notifyListeners();
+  }
+
+  /// 直接打开书库页并选中指定书库（供首页“我的书库”入口使用）
+  void openLibrary(String libraryId) {
+    pendingLibId = libraryId;
+    setTab(1);
   }
 
   Future<void> setThemeMode(String mode) async {
