@@ -10,6 +10,7 @@ import '../cache_manager.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/global_bookmarks_sheet.dart';
+import '../widgets/meta_edit_sheet.dart';
 import 'book_page.dart';
 
 class LibraryPage extends StatefulWidget {
@@ -248,9 +249,11 @@ class _GridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
     final cachedN = context.watch<CacheManager>().cachedInosFor(item.id).length;
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookPage(item: item))),
+      onLongPress: () => showMetaEditSheet(context, item),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -276,9 +279,9 @@ class _GridCard extends StatelessWidget {
             );
           }),
           const SizedBox(height: 6),
-          Text(item.meta.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.25)),
+          Text(app.effTitle(item), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.25)),
           const SizedBox(height: 2),
-          Text(item.meta.authorText, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: C.text2)),
+          Text(app.effAuthor(item), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: C.text2)),
         ],
       ),
     );

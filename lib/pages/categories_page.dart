@@ -1,4 +1,4 @@
-/// 自定义分类管理 + 分类内书籍列表
+/// 自定义分类管理 + 分类内书籍列表 + 共享分类选择器
 library;
 
 import 'package:flutter/material.dart';
@@ -8,6 +8,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/meta_edit_sheet.dart';
 import 'book_page.dart';
 
 class CategoriesPage extends StatelessWidget {
@@ -41,14 +42,7 @@ class CategoriesPage extends StatelessWidget {
                     borderRadius: R.card,
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(color: C.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-                      child: const Icon(Icons.category_outlined, color: C.primary, size: 22),
-                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
                     title: Text(name, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700)),
                     subtitle: Text('$count 本', style: const TextStyle(fontSize: 12, color: C.text2)),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -134,19 +128,87 @@ class CategoryBooksPage extends StatelessWidget {
                   decoration: BoxDecoration(color: dark ? C.dCard : Colors.white, borderRadius: BorderRadius.circular(14)),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                    leading: HavenCover(it.id, it.meta.title, size: 48, radius: 10),
-                    title: Text(it.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                    subtitle: Text(it.meta.authorText, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: C.text2)),
+                    leading: HavenCover(it.id, app.effTitle(it), size: 48, radius: 10),
+                    title: Text(app.effTitle(it), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                    subtitle: Text(app.effAuthor(it), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: C.text2)),
                     trailing: IconButton(
                       icon: const Icon(Icons.close, size: 18, color: C.text2),
                       tooltip: '移出分类',
                       onPressed: () => app.toggleBookCategory(name, it.id),
                     ),
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookPage(item: it))),
+                    onLongPress: () => showMetaEditSheet(context, it),
                   ),
                 );
               },
             ),
     );
   }
+}
+
+/// 共享的「加入分类」选择器（书籍详情页 / 播放页 都用）
+Future<void> showCategoryPickerSheet(BuildContext context, LibItem item) {
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => SafeArea(
+      child: Consumer<AppState>(
+        builder: (ctx, app, _) {
+          final cats = app.bookCategories;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('加入分类', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                if (cats.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 4),
+                    child: Text('还没有分类，先新建一个', style: TextStyle(fontSize: 13, color: C.text2)),
+                  ),
+                for (final k in cats.keys)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(k, style: const TextStyle(fontSize: 14.5)),
+                    value: cats[k]!.contains(item.id),
+                    onChanged: (_) => app.toggleBookCategory(k, item.id),
+                  ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('新建分类'),
+                    onPressed: () async {
+                      final name = await _promptCategoryName(ctx);
+                      if (name != null && name.isNotEmpty) await app.addCategory(name);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+Future<String?> _promptCategoryName(BuildContext ctx) {
+  final ctl = TextEditingController();
+  return showDialog<String>(
+    context: ctx,
+    builder: (d) => AlertDialog(
+      title: const Text('新建分类'),
+      content: TextField(controller: ctl, autofocus: true, decoration: const InputDecoration(hintText: '例如：探险、科幻、悬疑')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.pop(d, ctl.text.trim()), child: const Text('确定')),
+      ],
+    ),
+  );
 }

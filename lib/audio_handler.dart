@@ -45,8 +45,8 @@ class HavenAudioHandler extends BaseAudioHandler with SeekHandler {
       items.add(MediaItem(
         id: '${item.id}:${t.index}',
         title: t.title,
-        album: item.meta.title,
-        artist: item.meta.authorText,
+        album: engine.settings.overrideTitle(item.id) ?? item.meta.title,
+        artist: engine.settings.overrideAuthor(item.id) ?? item.meta.authorText,
         duration: Duration(milliseconds: (t.duration * 1000).round()),
         artUri: artUri,
       ));
@@ -62,8 +62,8 @@ class HavenAudioHandler extends BaseAudioHandler with SeekHandler {
     mediaItem.add(MediaItem(
       id: '${item.id}:${t.index}',
       title: t.title,
-      album: item.meta.title,
-      artist: item.meta.authorText,
+      album: engine.settings.overrideTitle(item.id) ?? item.meta.title,
+      artist: engine.settings.overrideAuthor(item.id) ?? item.meta.authorText,
       duration: Duration(milliseconds: (t.duration * 1000).round()),
       artUri: artUri,
     ));

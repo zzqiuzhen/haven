@@ -425,4 +425,18 @@ class AppState extends ChangeNotifier {
     }
     return null;
   }
+
+  // ---- 本地元数据覆盖 ----
+  String effTitle(LibItem item) => settings.overrideTitle(item.id) ?? item.meta.title;
+  String effAuthor(LibItem item) => settings.overrideAuthor(item.id) ?? item.meta.authorText;
+
+  Future<void> setMetaOverride(String bookId, {String? title, String? author}) async {
+    await settings.setMetaOverride(bookId, title: title, author: author);
+    notifyListeners();
+  }
+
+  Future<void> clearMetaOverride(String bookId) async {
+    await settings.clearMetaOverride(bookId);
+    notifyListeners();
+  }
 }

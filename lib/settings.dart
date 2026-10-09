@@ -287,6 +287,44 @@ class Settings {
   }
   Future<void> clearRecentSearches() => _sp.setStringList('recent_searches', <String>[]);
 
+  // ---- 本地元数据覆盖（书名/作者手改，锁屏与界面生效）----
+  Map<String, Map<String, String>> get metaOverrides {
+    try {
+      final raw = _sp.getString('meta_overrides');
+      if (raw == null || raw.isEmpty) return const {};
+      final m = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      final out = <String, Map<String, String>>{};
+      m.forEach((k, v) {
+        if (v is Map) out[k] = v.map((kk, vv) => MapEntry(kk.toString(), vv.toString()));
+      });
+      return out;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  String? overrideTitle(String bookId) => metaOverrides[bookId]?['title'];
+  String? overrideAuthor(String bookId) => metaOverrides[bookId]?['author'];
+
+  Future<void> setMetaOverride(String bookId, {String? title, String? author}) async {
+    final m = Map<String, Map<String, String>>.from(metaOverrides);
+    final entry = Map<String, String>.from(m[bookId] ?? const {});
+    if (title != null && title.isNotEmpty) entry['title'] = title;
+    if (author != null && author.isNotEmpty) entry['author'] = author;
+    if (entry.isEmpty) {
+      m.remove(bookId);
+    } else {
+      m[bookId] = entry;
+    }
+    await _sp.setString('meta_overrides', jsonEncode(m));
+  }
+
+  Future<void> clearMetaOverride(String bookId) async {
+    final m = Map<String, Map<String, String>>.from(metaOverrides);
+    m.remove(bookId);
+    await _sp.setString('meta_overrides', jsonEncode(m));
+  }
+
   // ---- 后台状态持久化（锁屏/进程被杀后回前台判定直达用）----
   int? get bgAtMs {
     final v = _sp.getInt('bg_at_ms');

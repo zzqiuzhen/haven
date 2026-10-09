@@ -189,10 +189,10 @@ class _SearchPageState extends State<SearchPage> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(it.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                                              Text(app.effTitle(it), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                                               const SizedBox(height: 3),
                                               Text(
-                                                [it.meta.authorText, if (it.meta.narrators.isNotEmpty) '演播 ${it.meta.narratorText}'].join(' · '),
+                                                [app.effAuthor(it), if (it.meta.narrators.isNotEmpty) '演播 ${it.meta.narratorText}'].join(' · '),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: const TextStyle(fontSize: 12, color: C.text2),

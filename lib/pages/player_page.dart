@@ -16,6 +16,7 @@ import '../widgets/bookmark_sheet.dart';
 import '../widgets/common.dart';
 import '../widgets/download_sheet.dart';
 import 'book_page.dart' show BookPage;
+import 'categories_page.dart';
 
 /// 播放器页是否处于打开状态（供锁屏返回时判断是否直达播放器）
 bool playerPageOpen = false;
@@ -177,9 +178,9 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                       Expanded(
                         child: Column(
                           children: [
-                            Text(track == null ? item.meta.title : trackDisplayTitle(item.meta.title, track.title), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                            Text(track == null ? (engine.settings.overrideTitle(item.id) ?? item.meta.title) : trackDisplayTitle(engine.settings.overrideTitle(item.id) ?? item.meta.title, track.title), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 2),
-                            Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: C.text2)),
+                            Text(engine.settings.overrideTitle(item.id) ?? item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: C.text2)),
                           ],
                         ),
                       ),
@@ -210,7 +211,7 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                           Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 5),
                           Text(
-                            '${item.meta.authorText}${item.meta.narrators.isNotEmpty ? ' · ${item.meta.narratorText} 演播' : ''}${engine.tracks.isEmpty ? '' : ' · ${engine.index + 1}/${engine.tracks.length}'}',
+                            '${engine.settings.overrideAuthor(item.id) ?? item.meta.authorText}${item.meta.narrators.isNotEmpty ? ' · ${item.meta.narratorText} 演播' : ''}${engine.tracks.isEmpty ? '' : ' · ${engine.index + 1}/${engine.tracks.length}'}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12.5, color: C.text2),
@@ -435,6 +436,16 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
               Navigator.pop(ctx);
               if (engine.item != null) {
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookPage(item: engine.item!)));
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.category_outlined, color: C.purple),
+            title: const Text('添加到分类…'),
+            onTap: () {
+              Navigator.pop(ctx);
+              if (engine.item != null) {
+                showCategoryPickerSheet(context, engine.item!);
               }
             },
           ),

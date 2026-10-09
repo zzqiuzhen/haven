@@ -141,7 +141,8 @@ class _ContinueCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final frac = (pg.progress > 0 ? pg.progress : (pg.duration > 0 ? pg.currentTime / pg.duration : 0)).clamp(0.0, 1.0).toDouble();
     final remain = (pg.duration - pg.currentTime).clamp(0.0, double.infinity).toDouble();
-    final sub = '${item.meta.authorText}${item.meta.narrators.isNotEmpty ? ' · ${item.meta.narratorText} 演播' : ''}';
+    final app = context.watch<AppState>();
+    final sub = '${app.effAuthor(item)}${item.meta.narrators.isNotEmpty ? ' · ${item.meta.narratorText} 演播' : ''}';
     return GestureDetector(
       onTap: () => _open(context),
       child: Glass(
@@ -156,7 +157,7 @@ class _ContinueCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  Text(app.effTitle(item), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 3),
                   Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: C.text2)),
                   const SizedBox(height: 11),
@@ -291,6 +292,7 @@ class _NewTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookPage(item: item))),
       child: Column(
@@ -299,7 +301,7 @@ class _NewTile extends StatelessWidget {
             return HavenCover(item.id, item.meta.title, width: cons.maxWidth, height: cons.maxWidth, radius: 15);
           }),
           const SizedBox(height: 7),
-          Text(item.meta.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          Text(app.effTitle(item), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -371,6 +373,7 @@ class _CatsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final cats = app.bookCategories;
     if (cats.isEmpty) return const SizedBox.shrink();
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -384,23 +387,16 @@ class _CatsSection extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(width: 10),
             itemBuilder: (context, i) {
               final name = cats.keys.elementAt(i);
-              final count = cats[name]!.length;
               return GestureDetector(
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CategoryBooksPage(name: name))),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: dark ? C.dCard : Colors.white,
                     borderRadius: R.pill,
                     boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
                   ),
-                  child: Row(children: [
-                    const Icon(Icons.category_outlined, size: 16, color: C.primary),
-                    const SizedBox(width: 6),
-                    Text(name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 6),
-                    Text('$count', style: const TextStyle(fontSize: 12, color: C.text2)),
-                  ]),
+                  child: Text(name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                 ),
               );
             },

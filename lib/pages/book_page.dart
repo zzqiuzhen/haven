@@ -18,6 +18,8 @@ import '../util.dart';
 import '../widgets/bookmark_sheet.dart';
 import '../widgets/common.dart';
 import '../widgets/download_sheet.dart';
+import '../widgets/meta_edit_sheet.dart';
+import 'categories_page.dart';
 import 'downloads_page.dart';
 import 'player_page.dart';
 
@@ -151,73 +153,6 @@ class _BookPageState extends State<BookPage> {
     showBookmarkSheet(context: context, api: app.api, item: widget.item, engine: engine);
   }
 
-  void _categorySheet() {
-    final item = widget.item;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: Consumer<AppState>(
-          builder: (ctx, app, _) {
-            final cats = app.bookCategories;
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('加入分类', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 10),
-                  if (cats.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 4),
-                      child: Text('还没有分类，先新建一个', style: TextStyle(fontSize: 13, color: C.text2)),
-                    ),
-                  for (final k in cats.keys)
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: Text(k, style: const TextStyle(fontSize: 14.5)),
-                      value: cats[k]!.contains(item.id),
-                      onChanged: (_) => app.toggleBookCategory(k, item.id),
-                    ),
-                  const SizedBox(height: 6),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('新建分类'),
-                      onPressed: () async {
-                        final name = await _promptCategoryName(ctx);
-                        if (name != null && name.isNotEmpty) await app.addCategory(name);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<String?> _promptCategoryName(BuildContext ctx) {
-    final ctl = TextEditingController();
-    return showDialog<String>(
-      context: ctx,
-      builder: (d) => AlertDialog(
-        title: const Text('新建分类'),
-        content: TextField(controller: ctl, autofocus: true, decoration: const InputDecoration(hintText: '例如：探险、科幻、悬疑')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(d, ctl.text.trim()), child: const Text('确定')),
-        ],
-      ),
-    );
-  }
-
   /// 固定的「章节」栏：章节标题 + 分组快速切换（上滑时钉在顶部，仅下方列表滚动）
   static const double _chapterRowH = 50; // 标题行固定高（防与首行重合）
   static const double _chapterChipsH = 38; // 分组标签行固定高
@@ -293,7 +228,7 @@ class _BookPageState extends State<BookPage> {
 
     final resumeLabel = (pg != null && pg.currentTime > 5) ? '继续听 · ${fmtDur(pg.currentTime)}' : '开始播放';
 
-    String metaLine = [item.meta.authorText, if (item.meta.narrators.isNotEmpty) '演播 ${item.meta.narratorText}', fmtTotal(item.duration)].join(' · ');
+    String metaLine = [app.effAuthor(item), if (item.meta.narrators.isNotEmpty) '演播 ${item.meta.narratorText}', fmtTotal(item.duration)].join(' · ');
 
     return Scaffold(
       body: Stack(
@@ -354,7 +289,15 @@ class _BookPageState extends State<BookPage> {
                                       title: const Text('加入分类…'),
                                       onTap: () {
                                         Navigator.pop(context);
-                                        _categorySheet();
+                                        showCategoryPickerSheet(context, item);
+                                      },
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.edit_outlined, color: C.orange),
+                                      title: const Text('编辑书名 / 作者'),
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        showMetaEditSheet(context, item);
                                       },
                                     ),
                                     ListTile(
@@ -389,7 +332,7 @@ class _BookPageState extends State<BookPage> {
                         padding: const EdgeInsets.symmetric(horizontal: 32),
                         child: Column(
                           children: [
-                            Text(item.meta.title, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, height: 1.25)),
+                            Text(app.effTitle(item), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, height: 1.25)),
                             if (item.meta.subtitle.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(item.meta.subtitle, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: C.text2)),
