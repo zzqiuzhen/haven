@@ -37,22 +37,36 @@ class PlayerPage extends StatefulWidget {
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
-class _PlayerPageState extends State<PlayerPage> {
+class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateMixin {
   bool _dragging = false;
   double _dragValue = 0;
-  double _minimizeDrag = 0; // 下滑最小化手势位移
-  bool _minDragActive = false; // 手指是否正在拖拽（用于回弹动画）
+  /// 下滑最小化位移（ValueNotifier：拖拽帧只重建位移层，不重建整页 → 丝滑不卡顿）
+  final ValueNotifier<double> _minimizeDragN = ValueNotifier<double>(0);
+  late final AnimationController _snapBack;
+  double _snapFrom = 0;
 
   @override
   void initState() {
     super.initState();
     playerPageOpen = true;
+    _snapBack = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    _snapBack.addListener(() {
+      _minimizeDragN.value = _snapFrom * (1 - Curves.easeOut.transform(_snapBack.value));
+    });
   }
 
   @override
   void dispose() {
     playerPageOpen = false;
+    _snapBack.dispose();
+    _minimizeDragN.dispose();
     super.dispose();
+  }
+
+  /// 动画平滑回弹到 0（未过阈值 / 弹出被拒 时使用）
+  void _startSnapBack() {
+    _snapFrom = _minimizeDragN.value;
+    _snapBack.forward(from: 0);
   }
 
   @override
@@ -103,47 +117,32 @@ class _PlayerPageState extends State<PlayerPage> {
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onVerticalDragStart: (_) {
-          if (!_minDragActive) setState(() => _minDragActive = true);
+          _snapBack.stop(); // 中途再按住可继续拖（打断回弹）
         },
         onVerticalDragUpdate: (d) {
-          setState(() {
-            _minimizeDrag += d.delta.dy;
-            if (_minimizeDrag < 0) _minimizeDrag = 0;
-          });
+          final v = _minimizeDragN.value + d.delta.dy;
+          _minimizeDragN.value = v < 0 ? 0 : v; // 只更新位移层，不再 setState 整页
         },
-        onVerticalDragCancel: () {
-          setState(() {
-            _minDragActive = false;
-            _minimizeDrag = 0;
-          });
-        },
+        onVerticalDragCancel: _startSnapBack,
         onVerticalDragEnd: (d) {
           final vy = d.velocity.pixelsPerSecond.dy;
-          if (_minimizeDrag > 110 || vy > 800) {
+          if (_minimizeDragN.value > 110 || vy > 800) {
             // 保持位移直接弹出（不要先复位——复位会先弹回一帧再退场，看起来就是“弹一下”）
             final nav = Navigator.of(context);
             nav.maybePop().then((ok) {
-              if (!ok && mounted) {
-                setState(() {
-                  _minDragActive = false;
-                  _minimizeDrag = 0;
-                });
-              }
+              if (!ok && mounted) _startSnapBack();
             });
           } else {
-            // 未过阈值：带动画平滑回弹（而不是瞬间归零）
-            setState(() {
-              _minDragActive = false;
-              _minimizeDrag = 0;
-            });
+            // 未过阈值：动画平滑回弹
+            _startSnapBack();
           }
         },
-        child: AnimatedContainer(
-          duration: _minDragActive ? Duration.zero : const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-          transform: Matrix4.translationValues(0, _minimizeDrag, 0),
-          child: Stack(
-            children: [
+        child: ValueListenableBuilder<double>(
+          valueListenable: _minimizeDragN,
+          child: RepaintBoundary(
+            // 重绘隔离：拖拽时只移动图层，整页（含大模糊背景）不重绘
+            child: Stack(
+              children: [
           Positioned.fill(child: ColoredBox(color: dark ? C.dBg : C.bg)),
           Positioned(
             top: -80,
@@ -380,6 +379,8 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ],
       ),
+      ),
+      builder: (context, dy, child) => Transform.translate(offset: Offset(0, dy), child: child),
       ),
       ),
     );
