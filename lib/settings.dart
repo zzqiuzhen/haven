@@ -123,4 +123,9 @@ class Settings {
       jsonEncode({'id': bookId, 'abs': abs, 'ts': DateTime.now().millisecondsSinceEpoch}),
     );
   }
+
+  /// 清除本机最后播放记录（条目已失效/被删除时自愈用）
+  Future<void> clearLastPos() async {
+    await _sp.remove('last_pos');
+  }
 }

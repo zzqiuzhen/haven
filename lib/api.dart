@@ -264,6 +264,9 @@ class Api {
   /// 轨道文件直链（无需会话即可访问，用于预取）
   String fileUrlFor(String itemId, String ino) => url('/api/items/$itemId/file/$ino');
 
+  /// 单集转码缓存直链（WMA→AAC；服务端首次请求时生成并缓存，供手机缓存秒播）
+  String transcodedFileUrlFor(String itemId, String ino) => url('/api/items/$itemId/file/$ino?transcoded=1');
+
   /// 预热：取 2 字节，触发服务端提前解析 MP 302 并缓存直链（也顺带预热 CDN 连接）；
   /// 返回最终响应（供直连预检读取 content-disposition，判断该文件能否被 AVPlayer 直接播放）
   Future<Response?> warm(String trackUrl) async {

@@ -70,8 +70,11 @@ class _BookPageState extends State<BookPage> {
       }
     } catch (e) {
       if (mounted) {
+        final msg = '$e';
         setState(() {
-          _err = '$e';
+          _err = (msg.contains('404') || msg.contains('not found'))
+              ? '该书已不在服务器上（可能已被删除），请返回刷新'
+              : msg;
           _loading = false;
         });
       }

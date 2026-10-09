@@ -51,6 +51,7 @@ class PlayerEngine extends ChangeNotifier {
   Future<bool>? _directProbing; // 直连探测单飞（多个调用共享同一探测）
   final Set<String> _directBadInos = {}; // 直连打不开的具体章节（CDN attachment 等），跳过直连走服务端
   int _directFailCount = 0;
+  bool _aacMode = false; // 转码书（WMA 等）：AAC 缓存模式（服务器单集转码缓存，手机可缓存秒播）
   int _loadSeq = 0; // 加载序号：后发加载取代先发，先发的失败/中断静默忽略
   bool _loading = false; // 是否有加载请求在途（错误流事件在此期间交给 catch 统一处理）
   bool _recovering = false; // 回退重试单飞锁，杜绝多重回退互相打断
@@ -73,6 +74,8 @@ class PlayerEngine extends ChangeNotifier {
   Track? get track => (index >= 0 && index < tracks.length) ? tracks[index] : null;
   bool get playing => player.playing;
   bool get isTranscode => session?.isTranscode ?? false;
+  /// HLS 转码模式（传统）：仅当会话为转码且未启用 AAC 缓存模式
+  bool get hlsMode => isTranscode && !_aacMode;
   double get duration => (detail?.duration ?? 0) > 0 ? detail!.duration : (session?.duration ?? 0);
   double get absolute => _absolute;
   double get trackPosition => player.position.inMilliseconds / 1000.0;
@@ -81,7 +84,7 @@ class PlayerEngine extends ChangeNotifier {
   double get bufferedAbsolute {
     if (session == null) return 0;
     final b = player.bufferedPosition.inMilliseconds / 1000.0;
-    if (isTranscode) return b;
+    if (hlsMode) return b;
     final t = track;
     return (t?.startOffset ?? 0) + b;
   }
@@ -98,38 +101,49 @@ class PlayerEngine extends ChangeNotifier {
     if (hasBook) return; // 已有书在播/已加载，不覆盖
     final o = owner;
     if (o == null) return;
-    // 优先本机最后播放记录（最新最准），其次服务端最近进度
-    String? id;
-    double abs = 0;
+    // 1) 优先本机最后播放记录（最新最准）
     final lp = settings.lastPos;
     if (lp != null && lp.$1.isNotEmpty) {
-      id = lp.$1;
-      abs = lp.$2;
-    } else {
-      final m = o.me;
-      if (m == null) return;
-      final ps = m.mediaProgress
-          .where((p) => !p.hideFromContinue && !p.isFinished && p.currentTime > 1)
-          .toList();
-      if (ps.isEmpty) return;
-      ps.sort((a, b) => (b.updatedAt?.millisecondsSinceEpoch ?? 0)
-          .compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0));
-      id = ps.first.libraryItemId;
-      abs = ps.first.currentTime;
+      try {
+        final d = await _loadDetail(lp.$1);
+        final it = await o.ensureItem(lp.$1);
+        item = it;
+        detail = d;
+        index = _trackIndexForAbsolute(lp.$2);
+        _absolute = lp.$2;
+        loading = false;
+        error = null;
+        notifyListeners();
+        return;
+      } catch (e) {
+        debugPrint('restoreLast 本机记录失效（可能已删除），自愈清除: $e');
+        await settings.clearLastPos();
+      }
     }
-    if (id == null || id.isEmpty) return;
+    // 2) 服务端最近进度
+    final m = o.me;
+    if (m == null) return;
+    final ps = m.mediaProgress
+        .where((pr) => !pr.hideFromContinue && !pr.isFinished && pr.currentTime > 1)
+        .toList();
+    if (ps.isEmpty) return;
+    ps.sort((a, b) => (b.updatedAt?.millisecondsSinceEpoch ?? 0)
+        .compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0));
+    final id2 = ps.first.libraryItemId;
+    final abs2 = ps.first.currentTime;
+    if (id2 == null || id2.isEmpty) return;
     try {
-      final d = await _loadDetail(id);
-      final it = await o.ensureItem(id);
+      final d = await _loadDetail(id2);
+      final it = await o.ensureItem(id2);
       item = it;
       detail = d;
-      index = _trackIndexForAbsolute(abs);
-      _absolute = abs;
+      index = _trackIndexForAbsolute(abs2);
+      _absolute = abs2;
       loading = false;
       error = null;
       notifyListeners();
     } catch (e) {
-      debugPrint('restoreLast failed: $e');
+      debugPrint('restoreLast 服务端进度恢复失败: $e');
     }
   }
 
@@ -181,18 +195,13 @@ class PlayerEngine extends ChangeNotifier {
       await player.setSpeed(sp);
       final needTranscode = detail!.tracks.any((t) => codecNeedsTranscode(t.codec, t.mimeType));
       if (needTranscode) {
-        // 转码书必须先建会话拿 HLS 地址；详情页若已预热且未过期则直接复用
-        final pre = _preSession;
-        if (pre != null && _preItem?.id == it.id && DateTime.now().difference(_preAt).inMinutes < 5) {
-          session = pre;
-        } else {
-          session = await api.startPlay(it.id, forceTranscode: true);
-        }
-        _preSession = null;
-        _preItem = null;
+        // WMA 等转码书：AAC 缓存模式（服务器按需单集转码并缓存；手机缓存后本地秒播）
+        _aacMode = true;
         await _startAt(start, autoplay: autoplay);
+        unawaited(_ensureSession());
         _startSyncLoop();
       } else {
+        _aacMode = false;
         // 直连/代理书：立即起播（缓存命中秒开，无需等会话），会话后台创建
         if (settings.directMode) {
           // 提前做一次直连就绪探测（后台跑，等用户点章节时已有结论）
@@ -204,8 +213,12 @@ class PlayerEngine extends ChangeNotifier {
       }
       unawaited(_ensureArt());
     } catch (e) {
-      if (!'$e'.contains('nterrupte')) {
-        error = '$e';
+      final msg = '$e';
+      if (msg.contains('404') || msg.contains('not found') || msg.contains('资源不存在')) {
+        unawaited(settings.clearLastPos());
+        error = '这本书已不在服务器上（可能已被删除），请返回书库刷新后重新选择';
+      } else if (!msg.contains('nterrupte')) {
+        error = msg;
       }
       debugPrint('open book failed: $e');
     }
@@ -233,6 +246,18 @@ class PlayerEngine extends ChangeNotifier {
       unawaited(syncNow());
     } catch (e) {
       debugPrint('ensureSession failed: $e');
+      final msg = '$e';
+      if (msg.contains('404') || msg.contains('not found') || msg.contains('资源不存在')) {
+        // 条目已从服务器删除：自愈（清本地记录 + 提示 + 退出该书）
+        final it2 = item;
+        if (it2 != null) {
+          final title = it2.meta.title;
+          unawaited(settings.clearLastPos());
+          unawaited(stopAndClose(closeSession: false));
+          error = '《$title》已不在服务器上（可能已被删除），请返回书库重新选择';
+          notifyListeners();
+        }
+      }
     }
   }
 
@@ -251,15 +276,14 @@ class PlayerEngine extends ChangeNotifier {
     if (tracks.isEmpty) return;
     error = null;
     _usedFallback = false;
-    if (isTranscode) {
+    if (hlsMode) {
       if (session == null) {
         error = '转码会话创建失败，请检查网络后重试';
         notifyListeners();
         return;
       }
-      // HLS 冷启动预热：服务端转码器需先产出首个分片（未就绪前请求会 404），
-      // 轮询等待“播放列表中的首个真实分片”可用（不请求 output-0.ts——当续播点
-      // 非 0 时服务端会因回退请求而 Reset Transcode，把转码起点重置到 0）
+      // HLS 冷启动预热：轮询等待“播放列表中的首个真实分片”可用（不请求 output-0.ts，
+      // 避免服务端因回退请求 Reset Transcode 把转码起点重置到 0）
       await _warmHlsStream();
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(_hlsUrl()), headers: api.authHeaders),
@@ -268,7 +292,7 @@ class PlayerEngine extends ChangeNotifier {
       index = _trackIndexForAbsolute(abs);
       _absolute = abs;
       if (autoplay) unawaited(player.play());
-      // 触发服务端窗口本地化（转码书：探测当前集所在文件）
+      // 触发服务端窗口本地化（HLS 转码书）
       unawaited(warmTrack(index));
     } else {
       final ti = _trackIndexForAbsolute(abs);
@@ -343,31 +367,28 @@ class PlayerEngine extends ChangeNotifier {
   // ---------------- 转码书预热 ----------------
 
   PlaySession? _preSession;
-  LibItem? _preItem;
-  DateTime _preAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// 进入书籍详情页时调用：提前创建转码会话并触发一次播放列表请求，起播免等冷启动
+  /// 进入书籍详情页时调用：转码书（AAC 模式）提前让服务器生成“当前集+下一集”的 AAC 缓存，
+  /// 用户点播放时已就绪，起播快
   Future<void> prewarmTranscode(LibItem it) async {
-    if (session != null || player.playing || _closing) return;
-    if (_preSession != null && _preItem?.id == it.id) return;
+    if (kIsWeb || _closing) return;
     try {
-      final s = await api.startPlay(it.id, forceTranscode: true);
-      _preSession = s;
-      _preItem = it;
-      _preAt = DateTime.now();
-      // 只请求播放列表做预热；不请求 output-0.ts（避免服务端误判而重置转码起点）
-      unawaited(() async {
-        try {
-          await api.dio.get<String>(
-            api.fullTrackUrl('/hls/${s.id}/output.m3u8'),
-            options: Options(
-              headers: api.authHeaders,
-              responseType: ResponseType.plain,
-              receiveTimeout: const Duration(seconds: 20),
-            ),
-          );
-        } catch (_) {}
-      }());
+      final d = detail != null && detail!.id == it.id ? detail! : await _loadDetail(it.id);
+      if (!d.tracks.any((t) => codecNeedsTranscode(t.codec, t.mimeType))) return;
+      final abs = owner?.progressOf(it.id)?.currentTime ?? 0;
+      int ti = 0;
+      for (int i = d.tracks.length - 1; i >= 0; i--) {
+        if (abs >= d.tracks[i].startOffset - 0.5) {
+          ti = i;
+          break;
+        }
+      }
+      for (final i in [ti, ti + 1]) {
+        if (i < 0 || i >= d.tracks.length) continue;
+        final t = d.tracks[i];
+        if (t.ino.isEmpty) continue;
+        unawaited(api.warm(api.transcodedFileUrlFor(it.id, t.ino)));
+      }
     } catch (_) {}
   }
 
@@ -386,6 +407,17 @@ class PlayerEngine extends ChangeNotifier {
     if (t.contentUrl != null && t.contentUrl!.isNotEmpty) return api.fullTrackUrl(t.contentUrl!);
     if (t.ino.isNotEmpty && item != null) return api.fileUrlFor(item!.id, t.ino);
     return null;
+  }
+
+  /// 本地缓存查找：转码书用 .m4a（AAC 缓存），普通书用原扩展名
+  String? _localCachedFor(Track t) {
+    final it = item;
+    if (it == null || t.ino.isEmpty) return null;
+    if (codecNeedsTranscode(t.codec, t.mimeType)) {
+      return cache.completePath(it.id, t.ino, '.m4a', validate: true);
+    }
+    final ext = t.ext.isNotEmpty ? t.ext : '.mp3';
+    return cache.completePath(it.id, t.ino, ext, validate: true);
   }
 
   void _markDirectFailed(Track? t) {
@@ -422,7 +454,22 @@ class PlayerEngine extends ChangeNotifier {
     }
   }
 
+  /// 创建 HLS 转码会话（AAC 模式失败时的安全网）
+  Future<void> _ensureHlsSession() async {
+    final it = item;
+    if (it == null) return;
+    if (session != null && session!.isTranscode) return;
+    try {
+      session = await api.startPlay(it.id, forceTranscode: true);
+    } catch (e) {
+      debugPrint('hls session 创建失败: $e');
+    }
+  }
+
   String _friendlyPlayError(String raw) {
+    if (raw.contains('-1100') || raw.contains('404') || raw.contains('not found') || raw.contains('资源不存在')) {
+      return '内容已不存在（404）：该条目可能已在服务器上被删除，请返回书库刷新后重新选择';
+    }
     if (raw.contains('-1004')) {
       return '无法连接服务器（-1004）：请检查手机网络（家中 WiFi 或 Tailscale）后重试';
     }
@@ -434,6 +481,14 @@ class PlayerEngine extends ChangeNotifier {
 
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false}) {
     final t = tracks[ti];
+    // 转码书（AAC 缓存模式）：手机缓存的 AAC 文件 → 服务端单集转码缓存直链
+    if (codecNeedsTranscode(t.codec, t.mimeType)) {
+      final aac = t.ino.isEmpty ? null : cache.completePath(item!.id, t.ino, '.m4a', validate: true);
+      if (aac != null) return (url: Uri.file(aac).toString(), headers: const {});
+      if (t.ino.isNotEmpty && item != null) {
+        return (url: api.transcodedFileUrlFor(item!.id, t.ino), headers: api.authHeaders);
+      }
+    }
     final ext = t.ext.isNotEmpty ? t.ext : '.mp3';
     // 本地缓存（带有效性校验：损坏文件自动清除并回退网络）
     final local = cache.completePath(item!.id, t.ino, ext, validate: true);
@@ -458,11 +513,14 @@ class PlayerEngine extends ChangeNotifier {
   Future<void> _playTrackIndex(int ti, {double inTrack = 0, bool autoplay = true, bool forceProxy = false}) async {
     if (ti < 0 || ti >= tracks.length) return;
     final t = tracks[ti];
-    // 首次使用直连前做一次快速就绪探测（≤1.5s，单飞）；不可达则本次运行干脆走服务端
-    if (!forceProxy &&
+    // 缓存优先：命中本地文件时绝不做任何网络探测（真·秒播）
+    final cachedLocal = _localCachedFor(t);
+    if (cachedLocal == null &&
+        !forceProxy &&
         settings.directMode &&
         _directOk == null &&
         t.path.startsWith('http') &&
+        !codecNeedsTranscode(t.codec, t.mimeType) &&
         !_directBadInos.contains(t.ino)) {
       await _ensureDirectProbed(t.path);
     }
@@ -492,6 +550,14 @@ class PlayerEngine extends ChangeNotifier {
       }
       debugPrint('setAudioSource 失败: $e');
       if (mySeq != _loadSeq) return; // 已有更新的加载在跑，交给它处理
+      // AAC 缓存模式失败 → 回退 HLS 转码模式（安全网）
+      if (_aacMode && !forceProxy && codecNeedsTranscode(t.codec, t.mimeType)) {
+        _aacMode = false;
+        debugPrint('AAC 缓存模式失败，回退 HLS 转码');
+        await _ensureHlsSession();
+        await _startAt(_absolute, autoplay: autoplay);
+        return;
+      }
       if (!forceProxy && !_usedFallback) {
         final fb = _fallbackUrlFor(t);
         if (fb != null) {
@@ -533,7 +599,7 @@ class PlayerEngine extends ChangeNotifier {
 
   Future<void> playAt(int ti) async {
     if (ti < 0 || ti >= tracks.length) return;
-    if (isTranscode) {
+    if (hlsMode) {
       await seekAbsolute(tracks[ti].startOffset + 0.01);
     } else {
       _usedFallback = false;
@@ -543,7 +609,7 @@ class PlayerEngine extends ChangeNotifier {
 
   Future<void> nextTrack({bool userInitiated = false}) async {
     if (!hasBook || tracks.isEmpty) return;
-    if (isTranscode) {
+    if (hlsMode) {
       final ni = min(index + 1, tracks.length - 1);
       await seekAbsolute(tracks[ni].startOffset + 0.01);
     } else if (index < tracks.length - 1) {
@@ -554,7 +620,7 @@ class PlayerEngine extends ChangeNotifier {
 
   Future<void> prevTrack() async {
     if (!hasBook || tracks.isEmpty) return;
-    if (isTranscode) {
+    if (hlsMode) {
       final pi = max(index - 1, 0);
       await seekAbsolute(tracks[pi].startOffset + 0.01);
       return;
@@ -600,11 +666,11 @@ class PlayerEngine extends ChangeNotifier {
     if (!hasBook || tracks.isEmpty) return;
     final tgt = abs.clamp(0.0, max(0.0, duration - 1)).toDouble();
     _absolute = tgt;
-    if (isTranscode) {
+    if (hlsMode) {
       await player.seek(Duration(milliseconds: (tgt * 1000).round()));
       index = _trackIndexForAbsolute(tgt);
       _reportMediaItem();
-      // 触发服务端窗口本地化（转码书：探测当前集所在文件）
+      // 触发服务端窗口本地化（HLS 转码书：探测当前集所在文件）
       unawaited(warmTrack(index));
       notifyListeners();
     } else {
@@ -616,6 +682,8 @@ class PlayerEngine extends ChangeNotifier {
         _usedFallback = false;
         await _playTrackIndex(ti, inTrack: inTrack, autoplay: true);
       }
+      // AAC 转码书：让服务端提前生成目标集
+      if (_aacMode) unawaited(warmTrack(ti));
     }
     _warmAhead();
   }
@@ -639,13 +707,13 @@ class PlayerEngine extends ChangeNotifier {
 
   void _updateAbsolute(double pos) {
     if (!hasBook || tracks.isEmpty) return;
-    if (session != null && isTranscode) {
+    if (session != null && hlsMode) {
       _absolute = pos;
       final ti = _trackIndexForAbsolute(pos);
       if (ti != index) {
         index = ti;
         _reportMediaItem();
-        // 转码书自然跨集：触发服务端窗口本地化滑动
+        // HLS 转码书自然跨集：触发服务端窗口本地化滑动
         unawaited(warmTrack(ti));
       }
     } else {
@@ -679,7 +747,7 @@ class PlayerEngine extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (isTranscode) {
+    if (hlsMode) {
       await syncNow();
       return;
     }
@@ -699,7 +767,7 @@ class PlayerEngine extends ChangeNotifier {
     if (_loading || _recovering) return;
     final t = track;
     debugPrint('player error: $e');
-    if (!_usedFallback && !isTranscode && t != null && _lastSourceDirect) {
+    if (!_usedFallback && !hlsMode && t != null && _lastSourceDirect) {
       final fb = _fallbackUrlFor(t);
       if (fb != null) {
         await _recoverToServer(t,
@@ -744,6 +812,11 @@ class PlayerEngine extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('sync failed: $e');
+      final msg = '$e';
+      if (msg.contains('404') || msg.contains('资源不存在')) {
+        // 会话已失效（会话过期/条目被删）：清掉，由同步环自愈重建
+        session = null;
+      }
     }
   }
 
@@ -826,18 +899,22 @@ class PlayerEngine extends ChangeNotifier {
 
   // ---------------- 预取 / 预热 ----------------
 
-  /// 预热某章（同时承担“触发服务端窗口本地化”的职责）：
+  /// 预热某章（同时承担“触发服务端窗口本地化 / AAC 生成”的职责）：
+  /// - 转码书 AAC 模式：提前让服务端生成该集 AAC 缓存
+  /// - 传统 HLS 转码书：探测 /file/ 入口触发窗口本地化
   /// - 直连已确认可用：走直连预热（顺带预检 CDN attachment，提前拉黑这类文件）
-  /// - 转码书（WMA 等）：探测 /file/ 入口，镜像未命中时服务端会写入“窗口本地化”队列
   /// - 其他：走服务端预热（解析 302 直链）
   Future<void> warmTrack(int ti) async {
     if (ti < 0 || ti >= tracks.length) return;
     final t = tracks[ti];
     try {
       if (codecNeedsTranscode(t.codec, t.mimeType)) {
-        // 转码书：探测该集的服务端文件入口（镜像未命中 → 服务端写入窗口本地化队列；
-        // 已本地化 → mode=local，2 字节极轻量）
-        if (item != null && t.ino.isNotEmpty) {
+        if (item == null || t.ino.isEmpty) return;
+        if (_aacMode) {
+          // 让服务端提前生成该集 AAC 缓存（Range 0-1 轻量探测）
+          await api.warm(api.transcodedFileUrlFor(item!.id, t.ino));
+        } else {
+          // 传统 HLS：探测 /file/ 入口触发窗口本地化
           await api.warm(api.fileUrlFor(item!.id, t.ino));
         }
         return;
@@ -866,9 +943,10 @@ class PlayerEngine extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// 预取后续章节：[probe] 控制是否顺带做 2 字节预热请求；
-  /// 普通书下载走服务端地址（本地镜像优先，稳定且快）；
-  /// 转码书对“下一集”做一次探测，触发服务端按窗口本地化（滑动加速）。
+  /// 预取后续章节：[probe] 控制是否顺带做 2 字节预热请求。
+  /// - 普通书：下载服务端原文件到手机（本地镜像优先，稳定且快）
+  /// - 转码书 AAC 模式：下载服务端单集转码缓存（.m4a）到手机 → 本地秒播
+  /// - 传统 HLS 转码书：对“下一集”发一次探测，触发服务端窗口本地化
   void _warmAhead({bool probe = true}) {
     final it = item;
     if (it == null || tracks.isEmpty) return;
@@ -881,9 +959,13 @@ class PlayerEngine extends ChangeNotifier {
       if (nt.ino.isEmpty) continue;
       final isTrans = codecNeedsTranscode(nt.codec, nt.mimeType);
       if (isTrans) {
-        // 转码书（WMA 等）无整文件可缓存；对“下一集”发一次探测，
-        // 触发服务端窗口本地化（当前集+后 5 集），随进度滑动
-        if (probe && i == index + 1) unawaited(warmTrack(i));
+        if (_aacMode) {
+          // AAC 缓存模式：把“后 N 集”直接下载到手机（服务端按需转码并缓存）
+          cache.enqueue(bookId: it.id, ino: nt.ino, ext: '.m4a', url: api.transcodedFileUrlFor(it.id, nt.ino));
+        } else if (probe && i == index + 1) {
+          // 传统转码书：对“下一集”发一次探测，触发服务端窗口本地化
+          unawaited(warmTrack(i));
+        }
         continue;
       }
       if (probe) unawaited(warmTrack(i));

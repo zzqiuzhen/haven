@@ -541,7 +541,13 @@ class _PlayerPageState extends State<PlayerPage> {
     final tracks = engine.tracks;
     final item = engine.item;
     if (tracks.isEmpty || item == null) return;
-    final controller = ScrollController(initialScrollOffset: (engine.index * 58.0 - 160).clamp(0, double.infinity));
+    // 精准锚定当前播放集：行高用 itemExtent=50 强制一致，并把当前集滚到视口中央
+    const kRowExtent = 50.0;
+    final viewportH = MediaQuery.of(context).size.height * 0.72;
+    final maxOffset = (tracks.length * kRowExtent - viewportH).clamp(0.0, double.infinity);
+    final controller = ScrollController(
+      initialScrollOffset: (engine.index * kRowExtent - viewportH / 2 + kRowExtent / 2).clamp(0.0, maxOffset),
+    );
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -556,6 +562,7 @@ class _PlayerPageState extends State<PlayerPage> {
             Expanded(
               child: ListView.builder(
                 controller: controller,
+                itemExtent: kRowExtent,
                 itemCount: tracks.length,
                 itemBuilder: (_, i) {
                   final t = tracks[i];
