@@ -70,7 +70,7 @@ class Settings {
 
   // ---- 外观 ----
   ThemeMode get themeMode {
-    final v = _sp.getString('theme_mode') ?? 'system';
+    final v = _sp.getString('theme_mode') ?? 'light';
     return v == 'light' ? ThemeMode.light : (v == 'dark' ? ThemeMode.dark : ThemeMode.system);
   }
 

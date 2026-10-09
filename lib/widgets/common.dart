@@ -269,14 +269,14 @@ class Glass extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
             color: (tint ?? (dark ? const Color(0xFF20262E) : Colors.white)).withValues(alpha: a),
             border: Border.all(
-              color: dark ? Colors.white.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.68),
+              color: dark ? Colors.transparent : Colors.white.withValues(alpha: 0.68),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.4 : 0.08), blurRadius: 24, offset: const Offset(0, 8)),
             ],
           ),
-          child: highlight
+          child: (highlight && !dark)
               ? Stack(children: [
                   child,
                   Positioned(
@@ -331,7 +331,7 @@ class HavenNavBar extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         color: (dark ? C.dCard : Colors.white).withValues(alpha: 0.55),
         border: Border.all(
-          color: dark ? Colors.white.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.55),
+          color: dark ? Colors.transparent : Colors.white.withValues(alpha: 0.55),
           width: 1,
         ),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.4 : 0.08), blurRadius: 24, offset: const Offset(0, 8))],
