@@ -31,16 +31,13 @@ class MePage extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 178),
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 220),
         children: [
           const Text('我的', style: TS.h1),
           const SizedBox(height: 16),
-          Container(
+          Glass(
+            radius: 22,
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: dark ? C.dCard : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
             child: Column(
               children: [
                 Row(
@@ -220,12 +217,8 @@ class _MenuCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: dark ? C.dCard : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return Glass(
+      radius: 22,
       child: Column(
         children: [
           for (int i = 0; i < items.length; i++) ...[

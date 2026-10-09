@@ -182,6 +182,58 @@ class BlobBackground extends StatelessWidget {
       );
 }
 
+/// 全页氛围背景：液态玻璃风格的柔和渐变色斑底
+class AmbientBackground extends StatelessWidget {
+  const AmbientBackground({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tones = dark
+        ? [
+            C.primary.withValues(alpha: 0.14),
+            C.purple.withValues(alpha: 0.10),
+            C.teal.withValues(alpha: 0.09),
+            C.orange.withValues(alpha: 0.07),
+          ]
+        : [
+            const Color(0xFF97BBFF).withValues(alpha: 0.50),
+            const Color(0xFFFFC4A0).withValues(alpha: 0.42),
+            const Color(0xFFB29EFF).withValues(alpha: 0.40),
+            const Color(0xFF96E8CF).withValues(alpha: 0.40),
+          ];
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: dark ? [const Color(0xFF131820), const Color(0xFF0D1017)] : [const Color(0xFFF4F6FB), const Color(0xFFE9EDF6)],
+          ),
+        ),
+        child: Stack(children: [
+          Positioned(left: -90, top: -80, child: _AmbientBlob(tones[0], 380)),
+          Positioned(right: -120, top: 30, child: _AmbientBlob(tones[1], 340)),
+          Positioned(right: -90, bottom: -130, child: _AmbientBlob(tones[2], 400)),
+          Positioned(left: -110, bottom: -110, child: _AmbientBlob(tones[3], 360)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _AmbientBlob extends StatelessWidget {
+  const _AmbientBlob(this.color, this.size);
+  final Color color;
+  final double size;
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)])),
+      );
+}
+
 /// 液态玻璃（liquid glass）面板：半透明 + 大模糊 + 顶部高光描边
 class Glass extends StatelessWidget {
   const Glass({
@@ -192,6 +244,7 @@ class Glass extends StatelessWidget {
     this.alpha,
     this.blur = 26,
     this.highlight = true,
+    this.tint,
   });
 
   final Widget child;
@@ -200,11 +253,12 @@ class Glass extends StatelessWidget {
   final double? alpha;
   final double blur;
   final bool highlight;
+  final Color? tint;
 
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final a = alpha ?? (dark ? 0.52 : 0.5);
+    final a = alpha ?? (dark ? 0.52 : 0.58);
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
@@ -213,9 +267,9 @@ class Glass extends StatelessWidget {
           padding: padding,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius),
-            color: (dark ? const Color(0xFF20262E) : Colors.white).withValues(alpha: a),
+            color: (tint ?? (dark ? const Color(0xFF20262E) : Colors.white)).withValues(alpha: a),
             border: Border.all(
-              color: dark ? Colors.white.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.55),
+              color: dark ? Colors.white.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.68),
               width: 1,
             ),
             boxShadow: [

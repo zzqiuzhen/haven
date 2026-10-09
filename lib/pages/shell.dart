@@ -22,8 +22,10 @@ class ShellPage extends StatelessWidget {
     final app = context.watch<AppState>();
     return Scaffold(
       extendBody: true,
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
+          const Positioned.fill(child: AmbientBackground()),
           Positioned.fill(
             child: IndexedStack(
               index: app.tab,

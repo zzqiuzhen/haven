@@ -133,10 +133,12 @@ class _LibraryPageState extends State<LibraryPage> {
                   itemBuilder: (_) => [
                     for (final e in _sortNames.entries) PopupMenuItem(value: e.key, child: Text(e.value)),
                   ],
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    child: Row(children: [
+                  child: Glass(
+                    radius: 999,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    child: const Row(children: [
                       Icon(Icons.swap_vert, size: 18, color: C.text2),
+                      SizedBox(width: 2),
                       Text('排序', style: TextStyle(fontSize: 13, color: C.text2)),
                     ]),
                   ),
@@ -162,12 +164,21 @@ class _LibraryPageState extends State<LibraryPage> {
                 itemBuilder: (context, i) {
                   final l = app.libraries[i];
                   final sel = l.id == id;
-                  return ChoiceChip(
-                    label: Text(l.name),
-                    selected: sel,
-                    onSelected: (_) {
-                      setState(() => _libId = l.id);
-                    },
+                  final darkChip = Theme.of(context).brightness == Brightness.dark;
+                  return GestureDetector(
+                    onTap: () => setState(() => _libId = l.id),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: R.pill,
+                        gradient: sel ? const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1F66C9)]) : null,
+                        color: sel ? null : (darkChip ? C.dCard.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.55)),
+                        border: sel ? null : Border.all(color: darkChip ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.7)),
+                        boxShadow: sel ? [BoxShadow(color: C.primary.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))] : null,
+                      ),
+                      child: Text(l.name,
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : (darkChip ? C.dText : const Color(0xFF333D55)))),
+                    ),
                   );
                 },
               ),
@@ -182,7 +193,7 @@ class _LibraryPageState extends State<LibraryPage> {
                       : EmptyView(_loadError != null ? '加载失败：$_loadError' : '书库是空的'))
                   : GridView.builder(
                       controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(20, 6, 20, 180),
+                      padding: const EdgeInsets.fromLTRB(20, 6, 20, 220),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
                         crossAxisSpacing: 14,

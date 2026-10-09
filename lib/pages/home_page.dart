@@ -26,9 +26,24 @@ class HomePage extends StatelessWidget {
       child: RefreshIndicator(
         onRefresh: app.refreshHome,
         child: ListView(
-          padding: const EdgeInsets.only(bottom: 178),
+          padding: const EdgeInsets.only(bottom: 220),
           children: [
             const _Header(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+              child: GestureDetector(
+                onTap: () => app.setTab(2),
+                child: Glass(
+                  radius: 19,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: const Row(children: [
+                    Icon(Icons.search, size: 18, color: C.text2),
+                    SizedBox(width: 9),
+                    Text('搜索书名 / 作者 / 章节', style: TextStyle(fontSize: 14, color: C.text2)),
+                  ]),
+                ),
+              ),
+            ),
             if (app.loadingHome && app.continueList.isEmpty)
               const Padding(
                 padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
@@ -135,18 +150,14 @@ class _ContinueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final frac = (pg.progress > 0 ? pg.progress : (pg.duration > 0 ? pg.currentTime / pg.duration : 0)).clamp(0.0, 1.0).toDouble();
     return GestureDetector(
       onTap: () => _open(context),
-      child: Container(
+      child: SizedBox(
         width: 286,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: dark ? C.dCard : Colors.white,
-          borderRadius: R.card,
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.3 : 0.05), blurRadius: 14, offset: const Offset(0, 5))],
-        ),
+        child: Glass(
+          radius: 20,
+          padding: const EdgeInsets.all(12),
         child: Row(
           children: [
             HavenCover(item.id, item.meta.title, size: 78, radius: 12),
@@ -173,6 +184,7 @@ class _ContinueCard extends StatelessWidget {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -219,12 +231,11 @@ class _StatsSection extends StatelessWidget {
             childAspectRatio: 2.05,
             children: [
               for (final c in cards)
-                Container(
+                Glass(
+                  radius: 18,
+                  tint: c.$4,
+                  alpha: dark ? 0.18 : 0.22,
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                  decoration: BoxDecoration(
-                    color: dark ? c.$4.withValues(alpha: 0.12) : c.$4.withValues(alpha: 0.09),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

@@ -10,7 +10,7 @@ class C {
   static const primarySoft = Color(0xFFD6E9FF);
   static const navy = Color(0xFF1B2A43);
   static const text = Color(0xFF1C1C1E);
-  static const text2 = Color(0xFF8E8E93);
+  static const text2 = Color(0xFF6B6B70);
   static const text3 = Color(0xFFB3B7BD);
   static const line = Color(0xFFECEDF0);
   static const green = Color(0xFF34C759);

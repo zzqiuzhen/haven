@@ -96,7 +96,7 @@ class _SearchPageState extends State<SearchPage> {
                         ? const EmptyView('没有找到相关书籍')
                         : ListView.separated(
                             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 180),
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 220),
                             itemCount: _results.length,
                             separatorBuilder: (_, __) => const SizedBox(height: 10),
                             itemBuilder: (context, i) {
