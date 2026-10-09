@@ -99,7 +99,16 @@ class CacheManager extends ChangeNotifier {
 
   void enqueue({required String bookId, required String ino, required String ext, required String url}) {
     if (kIsWeb || _root == null) return;
-    if (hasMark(bookId, ino)) return;
+    // 正确扩展名已缓存 → 跳过
+    if (hasMarkWithExt(bookId, ino, ext)) return;
+    // 错扩展名缓存（如旧版写的 .mp3，新版用 .m4a）→ 清理旧标记+数据，重新下
+    if (hasMarkAnyExt(bookId, ino)) {
+      for (final bad in _fallbackExts.where((e) => e != ext)) {
+        try { File(p.join(_root!.path, bookId, '$ino$bad')).deleteSync(); } catch (_) {}
+        try { _doneFile(bookId, ino).deleteSync(); } catch (_) {}
+        try { File(p.join(_root!.path, bookId, '$ino$bad.part')).deleteSync(); } catch (_) {}
+      }
+    }
     final k = _key(bookId, ino);
     final t = _tasks[k];
     if (t != null && (t.state == 'downloading' || t.state == 'queued')) return;
@@ -108,6 +117,26 @@ class CacheManager extends ChangeNotifier {
     notifyListeners();
     _pump();
   }
+
+  /// 正确扩展名已完整缓存
+  bool hasMarkWithExt(String bookId, String ino, String ext) {
+    if (kIsWeb || _root == null) return false;
+    if (!_doneFile(bookId, ino).existsSync()) return false;
+    return _dataFile(bookId, ino, ext).existsSync();
+  }
+
+  /// 任意扩展名已缓存（用于清理错扩展名缓存）
+  bool hasMarkAnyExt(String bookId, String ino) {
+    if (kIsWeb || _root == null) return false;
+    if (!_doneFile(bookId, ino).existsSync()) return false;
+    for (final e in _fallbackExts) {
+      if (_dataFile(bookId, ino, e).existsSync()) return true;
+    }
+    return true; // .done 存在但数据全没了，视为异常
+  }
+
+  /// 缓存查找的扩展名回退序列（与 player_engine 的 _fallbackExts 保持一致）
+  static const List<String> _fallbackExts = ['.m4a', '.mp3', '.aac', '.ogg', '.opus'];
 
   void enqueueNext({required String bookId, required List<({String ino, String ext, String url})> next}) {
     for (final t in next) {

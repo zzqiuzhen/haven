@@ -436,16 +436,30 @@ class PlayerEngine extends ChangeNotifier {
     return null;
   }
 
-  /// 本地缓存查找：转码书用 .m4a（AAC 缓存），普通书用原扩展名
+  /// 本地缓存查找：
+  /// 1) 转码书：固定 .m4a（AAC 缓存格式）
+  /// 2) 普通书：按 t.ext / 实际文件后缀查；若 ext 不可用则尝试 [".m4a", ".mp3", ".aac"] 任一存在
   String? _localCachedFor(Track t) {
     final it = item;
     if (it == null || t.ino.isEmpty) return null;
     if (codecNeedsTranscode(t.codec, t.mimeType)) {
       return cache.completePath(it.id, t.ino, '.m4a', validate: true);
     }
-    final ext = t.ext.isNotEmpty ? t.ext : '.mp3';
-    return cache.completePath(it.id, t.ino, ext, validate: true);
+    // 优先按声明后缀查；查不到就尝试常见音频后缀（含 m4a——大奉打更人、童林传等
+    // m4a 库的 audioFiles 没有 metadata.ext，必须靠这里兜底命中本地缓存）
+    final declared = t.ext.isNotEmpty ? t.ext : null;
+    final candidates = declared != null
+        ? <String>[declared, ..._fallbackExts.where((e) => e != declared)]
+        : _fallbackExts;
+    for (final ext in candidates) {
+      final p = cache.completePath(it.id, t.ino, ext, validate: true);
+      if (p != null) return p;
+    }
+    return null;
   }
+
+  /// 缓存查找的扩展名回退序列（命中优先）
+  static const List<String> _fallbackExts = ['.m4a', '.mp3', '.aac', '.ogg', '.opus'];
 
   void _markDirectFailed(Track? t) {
     if (t != null && t.ino.isNotEmpty) _directBadInos.add(t.ino);
@@ -516,10 +530,15 @@ class PlayerEngine extends ChangeNotifier {
         return (url: api.transcodedFileUrlFor(item!.id, t.ino), headers: api.authHeaders);
       }
     }
-    final ext = t.ext.isNotEmpty ? t.ext : '.mp3';
-    // 本地缓存（带有效性校验：损坏文件自动清除并回退网络）
-    final local = cache.completePath(item!.id, t.ino, ext, validate: true);
-    if (local != null) return (url: Uri.file(local).toString(), headers: const {});
+    // 1) 先按声明后缀查本地缓存
+    final declared = t.ext.isNotEmpty ? t.ext : null;
+    final candidates = declared != null
+        ? <String>[declared, ..._fallbackExts.where((e) => e != declared)]
+        : _fallbackExts;
+    for (final ext in candidates) {
+      final local = cache.completePath(item!.id, t.ino, ext, validate: true);
+      if (local != null) return (url: Uri.file(local).toString(), headers: const {});
+    }
     // 极速直连（302 到 115 CDN）：仅在可用时启用
     if (!forceProxy &&
         settings.directMode &&
@@ -1001,7 +1020,20 @@ class PlayerEngine extends ChangeNotifier {
         continue;
       }
       if (probe) unawaited(warmTrack(i));
-      final ext = nt.ext.isNotEmpty ? nt.ext : '.mp3';
+      // 扩展名回退：audioFiles 没 ext 时按 mime/codec 推断；找不到时优先 m4a
+      // （大奉 m4a 实际就是 m4a，写成 .mp3 会让 completePath 永远命中失败）
+      String ext = nt.ext.isNotEmpty ? nt.ext : '';
+      if (ext.isEmpty) {
+        if (nt.mimeType.contains('mp4') || nt.mimeType.contains('aac') || nt.codec == 'mp4a.40.2' || nt.codec == 'aac') {
+          ext = '.m4a';
+        } else if (nt.mimeType.contains('mpeg') || nt.codec == 'mp3') {
+          ext = '.mp3';
+        } else if (nt.mimeType.contains('ogg') || nt.codec == 'opus') {
+          ext = '.opus';
+        } else {
+          ext = '.m4a';
+        }
+      }
       final url = (nt.contentUrl != null && nt.contentUrl!.isNotEmpty) ? api.fullTrackUrl(nt.contentUrl!) : api.fileUrlFor(it.id, nt.ino);
       cache.enqueue(bookId: it.id, ino: nt.ino, ext: ext, url: url);
     }
