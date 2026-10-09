@@ -39,6 +39,7 @@ class PlayerPage extends StatefulWidget {
 class _PlayerPageState extends State<PlayerPage> {
   bool _dragging = false;
   double _dragValue = 0;
+  double _minimizeDrag = 0; // 下滑最小化手势位移
 
   @override
   void initState() {
@@ -97,8 +98,27 @@ class _PlayerPageState extends State<PlayerPage> {
     }
 
     return Scaffold(
-      body: Stack(
-        children: [
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onVerticalDragUpdate: (d) {
+          setState(() {
+            _minimizeDrag += d.delta.dy;
+            if (_minimizeDrag < 0) _minimizeDrag = 0;
+          });
+        },
+        onVerticalDragEnd: (d) {
+          final vy = d.velocity.pixelsPerSecond.dy;
+          if (_minimizeDrag > 110 || vy > 800) {
+            setState(() => _minimizeDrag = 0);
+            Navigator.pop(context);
+          } else {
+            setState(() => _minimizeDrag = 0);
+          }
+        },
+        child: Transform.translate(
+          offset: Offset(0, _minimizeDrag),
+          child: Stack(
+            children: [
           Positioned.fill(child: ColoredBox(color: dark ? C.dBg : C.bg)),
           Positioned(
             top: -80,
@@ -316,6 +336,8 @@ class _PlayerPageState extends State<PlayerPage> {
             ),
           ),
         ],
+      ),
+      ),
       ),
     );
   }
