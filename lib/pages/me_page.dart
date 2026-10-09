@@ -16,6 +16,7 @@ import '../widgets/common.dart';
 import 'downloads_page.dart';
 import 'recent_page.dart';
 import 'settings_home_page.dart';
+import 'settings_nav_page.dart';
 import 'settings_playback_page.dart';
 
 class MePage extends StatelessWidget {
@@ -92,6 +93,9 @@ class MePage extends StatelessWidget {
             }),
             _MenuItem(Icons.dashboard_customize_outlined, C.teal, '发现页设置', '模块显示与排序', () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HomeSettingsPage()));
+            }),
+            _MenuItem(Icons.view_week_outlined, C.primary, '任务栏设置', '底部按钮显隐 / 仅图标', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NavSettingsPage()));
             }),
             _MenuItem(Icons.dns_outlined, C.primary, '服务器', app.api.baseUrl, () => _showServer(context, app)),
             _MenuItem(Icons.palette_outlined, C.purple, '主题模式', switch (app.settings.themeMode) {

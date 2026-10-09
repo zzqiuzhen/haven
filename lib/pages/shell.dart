@@ -41,19 +41,20 @@ class ShellPage extends StatelessWidget {
 class BottomDock extends StatelessWidget {
   const BottomDock({super.key});
 
-  static const _items = [
-    (Icons.explore_outlined, Icons.explore, '发现'),
-    (Icons.library_books_outlined, Icons.library_books, '书库'),
-    (Icons.search, Icons.search, '搜索'),
-    (Icons.person_outline, Icons.person, '我的'),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final engine = context.watch<PlayerEngine>();
     final dark = Theme.of(context).brightness == Brightness.dark;
     final showMini = engine.hasBook;
+    // 底部导航项：按设置过滤（「我的」始终保留），并映射到真实 tab 下标
+    final entries = <(IconData, IconData, String, int)>[
+      if (app.navShowDiscover) (Icons.explore_outlined, Icons.explore, '发现', 0),
+      if (app.navShowLibrary) (Icons.library_books_outlined, Icons.library_books, '书库', 1),
+      if (app.navShowSearch) (Icons.search, Icons.search, '搜索', 2),
+      (Icons.person_outline, Icons.person, '我的', 3),
+    ];
+    final iconsOnly = app.navIconsOnly;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
@@ -108,41 +109,43 @@ class BottomDock extends StatelessWidget {
               const SizedBox(height: 2),
             ],
             SizedBox(
-              height: 54,
+              height: iconsOnly ? 46 : 54,
               child: Row(
                 children: [
-                  for (int i = 0; i < _items.length; i++)
+                  for (final e in entries)
                     Expanded(
                       child: InkWell(
                         borderRadius: BorderRadius.circular(18),
-                        onTap: () => app.setTab(i),
+                        onTap: () => app.setTab(e.$4),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             AnimatedContainer(
                               duration: const Duration(milliseconds: 180),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                              padding: EdgeInsets.symmetric(horizontal: 12, vertical: iconsOnly ? 5 : 3),
                               decoration: BoxDecoration(
-                                color: i == app.tab
+                                color: e.$4 == app.tab
                                     ? (dark ? C.primary.withValues(alpha: 0.18) : C.primarySoft.withValues(alpha: 0.8))
                                     : Colors.transparent,
                                 borderRadius: BorderRadius.circular(13),
                               ),
                               child: Icon(
-                                i == app.tab ? _items[i].$2 : _items[i].$1,
+                                e.$4 == app.tab ? e.$2 : e.$1,
                                 size: 22,
-                                color: i == app.tab ? C.primary : C.text2,
+                                color: e.$4 == app.tab ? C.primary : C.text2,
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _items[i].$3,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: i == app.tab ? C.primary : C.text2,
-                                fontWeight: i == app.tab ? FontWeight.w600 : FontWeight.w400,
+                            if (!iconsOnly) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                e.$3,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: e.$4 == app.tab ? C.primary : C.text2,
+                                  fontWeight: e.$4 == app.tab ? FontWeight.w600 : FontWeight.w400,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),

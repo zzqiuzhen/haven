@@ -41,6 +41,7 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _dragging = false;
   double _dragValue = 0;
   double _minimizeDrag = 0; // 下滑最小化手势位移
+  bool _minDragActive = false; // 手指是否正在拖拽（用于回弹动画）
 
   @override
   void initState() {
@@ -101,26 +102,46 @@ class _PlayerPageState extends State<PlayerPage> {
     return Scaffold(
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
+        onVerticalDragStart: (_) {
+          if (!_minDragActive) setState(() => _minDragActive = true);
+        },
         onVerticalDragUpdate: (d) {
           setState(() {
             _minimizeDrag += d.delta.dy;
             if (_minimizeDrag < 0) _minimizeDrag = 0;
           });
         },
+        onVerticalDragCancel: () {
+          setState(() {
+            _minDragActive = false;
+            _minimizeDrag = 0;
+          });
+        },
         onVerticalDragEnd: (d) {
           final vy = d.velocity.pixelsPerSecond.dy;
           if (_minimizeDrag > 110 || vy > 800) {
-            // 不先复位：带着位移直接弹出（避免先回一帧再弹导致的闪一下）
+            // 保持位移直接弹出（不要先复位——复位会先弹回一帧再退场，看起来就是“弹一下”）
             final nav = Navigator.of(context);
-            nav.maybePop().then((_) {
-              if (mounted) setState(() => _minimizeDrag = 0);
+            nav.maybePop().then((ok) {
+              if (!ok && mounted) {
+                setState(() {
+                  _minDragActive = false;
+                  _minimizeDrag = 0;
+                });
+              }
             });
           } else {
-            setState(() => _minimizeDrag = 0);
+            // 未过阈值：带动画平滑回弹（而不是瞬间归零）
+            setState(() {
+              _minDragActive = false;
+              _minimizeDrag = 0;
+            });
           }
         },
-        child: Transform.translate(
-          offset: Offset(0, _minimizeDrag),
+        child: AnimatedContainer(
+          duration: _minDragActive ? Duration.zero : const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          transform: Matrix4.translationValues(0, _minimizeDrag, 0),
           child: Stack(
             children: [
           Positioned.fill(child: ColoredBox(color: dark ? C.dBg : C.bg)),

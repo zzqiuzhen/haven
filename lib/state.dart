@@ -131,10 +131,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    try {
-      await engine.stopAndClose();
-    } catch (_) {}
-    await settings.logout();
+    // 先立即切到登录页（UI 即时生效），清理动作放后台，避免慢网络下“点了没反应”
     me = null;
     continueList = [];
     libraries = [];
@@ -144,6 +141,12 @@ class AppState extends ChangeNotifier {
     libTotals.clear();
     stats = ListeningStats();
     notifyListeners();
+    try {
+      await settings.logout();
+    } catch (_) {}
+    try {
+      await engine.stopAndClose().timeout(const Duration(seconds: 6));
+    } catch (_) {}
   }
 
   Future<void> refreshHome() async {
@@ -358,5 +361,24 @@ class AppState extends ChangeNotifier {
     if (item == null) return;
     await api.removeBookmark(item.id, time);
     await settings.unrecordBookmark(item.id, time);
+  }
+
+  // ---- 任务栏（底部导航）----
+  bool get navShowDiscover => settings.navShowDiscover;
+  bool get navShowLibrary => settings.navShowLibrary;
+  bool get navShowSearch => settings.navShowSearch;
+  bool get navIconsOnly => settings.navIconsOnly;
+
+  Future<void> setNavPrefs({bool? discover, bool? library, bool? search, bool? iconsOnly}) async {
+    await settings.setNavPrefs(discover: discover, library: library, search: search, iconsOnly: iconsOnly);
+    // 若当前所在 tab 被隐藏 → 自动切到第一个可见的
+    final visible = <int>[
+      if (settings.navShowDiscover) 0,
+      if (settings.navShowLibrary) 1,
+      if (settings.navShowSearch) 2,
+      3,
+    ];
+    if (!visible.contains(tab)) tab = visible.first;
+    notifyListeners();
   }
 }

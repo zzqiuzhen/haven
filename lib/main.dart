@@ -58,6 +58,7 @@ class HavenApp extends StatefulWidget {
 
 class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
   DateTime? _hiddenAt;
+  bool _wasPlayerOpenWhenAway = false; // 离开前台时是否正处于播放页
 
   @override
   void initState() {
@@ -71,16 +72,20 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
-      // 记录首次离开前台的时间（不覆盖）
+      // 记录首次离开前台的时间（不覆盖）与离开时的页面
       _hiddenAt ??= DateTime.now();
+      _wasPlayerOpenWhenAway = playerPageOpen;
       widget.app.engine.syncNow();
     } else if (state == AppLifecycleState.resumed) {
+      final wasPlayerOpen = _wasPlayerOpenWhenAway;
+      _wasPlayerOpenWhenAway = false;
       final since = _hiddenAt;
       _hiddenAt = null;
       final awaySec = since == null ? 0 : DateTime.now().difference(since).inSeconds;
-      // 从锁屏/后台回来且有正在播放的书 → 直达播放页
-      // （锁屏“正在播放”卡片点开会唤起 App；awaySec 可能很短，播放中即触发；带多次重试）
-      if (widget.app.engine.hasBook &&
+      // 只在「离开前台时正处于播放页」才回前台直达播放页；
+      // 在书库/搜索等页面被系统间接触发 inactive→resumed（通知中心、来电横幅等）时不再乱跳
+      if (wasPlayerOpen &&
+          widget.app.engine.hasBook &&
           widget.app.loggedIn &&
           !playerPageOpen &&
           (widget.app.engine.playing || awaySec >= 2)) {

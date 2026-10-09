@@ -215,4 +215,17 @@ class Settings {
     list.addAll(found);
     await setBookmarkIndex(list);
   }
+
+  // ---- 任务栏（底部导航）----
+  bool get navShowDiscover => _sp.getBool('nav_show_discover') ?? true;
+  bool get navShowLibrary => _sp.getBool('nav_show_library') ?? true;
+  bool get navShowSearch => _sp.getBool('nav_show_search') ?? true;
+  bool get navIconsOnly => _sp.getBool('nav_icons_only') ?? false;
+
+  Future<void> setNavPrefs({bool? discover, bool? library, bool? search, bool? iconsOnly}) async {
+    if (discover != null) await _sp.setBool('nav_show_discover', discover);
+    if (library != null) await _sp.setBool('nav_show_library', library);
+    if (search != null) await _sp.setBool('nav_show_search', search);
+    if (iconsOnly != null) await _sp.setBool('nav_icons_only', iconsOnly);
+  }
 }
