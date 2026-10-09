@@ -17,6 +17,7 @@ import '../theme.dart';
 import '../util.dart';
 import '../widgets/bookmark_sheet.dart';
 import '../widgets/common.dart';
+import '../widgets/download_sheet.dart';
 import 'downloads_page.dart';
 import 'player_page.dart';
 
@@ -104,22 +105,9 @@ class _BookPageState extends State<BookPage> {
   }
 
   void _enqueueCache(List<int> idx) {
-    final cache = context.read<CacheManager>();
-    final app = context.read<AppState>();
     final d = _d;
     if (d == null) return;
-    var n = 0, skipped = 0;
-    for (final i in idx) {
-      if (i < 0 || i >= d.tracks.length) continue;
-      final t = d.tracks[i];
-      if (t.ino.isEmpty) continue;
-      if (codecNeedsTranscode(t.codec, t.mimeType)) { skipped++; continue; }
-      final url = app.api.fileUrlFor(widget.item.id, t.ino);
-      cache.enqueue(bookId: widget.item.id, ino: t.ino, ext: CacheManager.mediaExt(ext: t.ext, mimeType: t.mimeType, codec: t.codec), url: url);
-      n++;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(skipped > 0 ? '已加入缓存队列（$n 章）· $skipped 章为转码书暂不支持' : '已加入缓存队列（$n 章）')));
+    enqueueCacheRange(context, widget.item, d, idx);
   }
 
   void _downloadSheet() {
@@ -134,62 +122,7 @@ class _BookPageState extends State<BookPage> {
         break;
       }
     }
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Padding(padding: EdgeInsets.all(12), child: Text('离线下载', style: TS.title)),
-          ListTile(
-            leading: const Icon(Icons.playlist_add, color: C.primary),
-            title: Text('从第 ${d.tracks[ti].index} 章缓存 10 章'),
-            onTap: () {
-              Navigator.pop(ctx);
-              _enqueueCache([for (int i = ti; i < ti + 10; i++) i]);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.download, color: C.purple),
-            title: Text('缓存整本（共 ${d.tracks.length} 章）'),
-            onTap: () {
-              Navigator.pop(ctx);
-              showDialog(
-                context: context,
-                builder: (dctx) => AlertDialog(
-                  title: const Text('缓存整本？'),
-                  content: Text('将对 ${d.tracks.length} 章排队下载，占用设备存储，建议在 Wi-Fi 下进行。'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('取消')),
-                    FilledButton(
-                      onPressed: () {
-                        Navigator.pop(dctx);
-                        _enqueueCache([for (int i = 0; i < d.tracks.length; i++) i]);
-                      },
-                      child: const Text('开始'),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.edit_calendar_outlined, color: C.navy),
-            title: const Text('自定义范围（手动输入起止集数）'),
-            onTap: () {
-              Navigator.pop(ctx);
-              _customRangeDialog(d: d, defaultStart: d.tracks[ti].index);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.folder_open, color: C.teal),
-            title: const Text('查看下载与缓存'),
-            onTap: () {
-              Navigator.pop(ctx);
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsPage()));
-            },
-          ),
-        ]),
-      ),
-    );
+    showDownloadSheet(context: context, item: widget.item, detail: d, currentIndex: ti);
   }
 
   Future<void> _addBookmark() async {
@@ -219,6 +152,9 @@ class _BookPageState extends State<BookPage> {
   }
 
   /// 固定的「章节」栏：章节标题 + 分组快速切换（上滑时钉在顶部，仅下方列表滚动）
+  static const double _chapterRowH = 50; // 标题行固定高（防与首行重合）
+  static const double _chapterChipsH = 38; // 分组标签行固定高
+
   Widget _chapterHeader(BuildContext context, bool dark, BookDetail? d) {
     final topPad = MediaQuery.of(context).padding.top;
     final hasChips = d != null && d.tracks.length > 100;
@@ -228,26 +164,28 @@ class _BookPageState extends State<BookPage> {
         padding: EdgeInsets.only(top: topPad),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
-              child: Row(
-                children: [
-                  const Text('章节', style: TS.h2),
-                  const SizedBox(width: 8),
-                  Text(d == null ? '加载中…' : '共 ${d.tracks.length} 章', style: TS.mini),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => _showBookmarks(),
-                    child: const Text('书签', style: TextStyle(fontSize: 13, color: C.primary)),
-                  ),
-                ],
+            SizedBox(
+              height: _chapterRowH,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: Row(
+                  children: [
+                    const Text('章节', style: TS.h2),
+                    const SizedBox(width: 8),
+                    Text(d == null ? '加载中…' : '共 ${d.tracks.length} 章', style: TS.mini),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => _showBookmarks(),
+                      child: const Text('书签', style: TextStyle(fontSize: 13, color: C.primary)),
+                    ),
+                  ],
+                ),
               ),
             ),
             if (hasChips)
               SizedBox(
-                height: 36,
+                height: _chapterChipsH,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -257,87 +195,19 @@ class _BookPageState extends State<BookPage> {
                     final start = gi * 100;
                     final end = math.min(start + 100, d.tracks.length);
                     final sel = _group == start;
-                    return ChoiceChip(
-                      label: Text('第${start + 1}-$end章', style: const TextStyle(fontSize: 12.5)),
-                      selected: sel,
-                      onSelected: (_) => setState(() => _group = start),
+                    return Center(
+                      child: ChoiceChip(
+                        label: Text('第${start + 1}-$end章', style: const TextStyle(fontSize: 12.5)),
+                        selected: sel,
+                        onSelected: (_) => setState(() => _group = start),
+                      ),
                     );
                   },
                 ),
               ),
-            const SizedBox(height: 2),
+            Container(height: 1, color: dark ? C.dLine : C.line),
           ],
         ),
-      ),
-    );
-  }
-
-  /// 自定义缓存范围：手动输入起止集数
-  void _customRangeDialog({required BookDetail d, required int defaultStart}) {
-    final total = d.tracks.length;
-    final startCtl = TextEditingController(text: '$defaultStart');
-    final endCtl = TextEditingController(text: '${math.min(defaultStart + 9, total)}');
-    showDialog(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        title: const Text('自定义缓存范围'),
-        content: StatefulBuilder(
-          builder: (sctx, setD) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  const Text('第'),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: TextField(
-                      controller: startCtl,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-                      onChanged: (_) => setD(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Text('集 到 第'),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: TextField(
-                      controller: endCtl,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-                      onChanged: (_) => setD(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Text('集'),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text('共 $total 集，支持手动输入起止集数', style: const TextStyle(fontSize: 12, color: C.text2)),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              final a = int.tryParse(startCtl.text.trim());
-              final b = int.tryParse(endCtl.text.trim());
-              if (a == null || b == null || a < 1 || b > total || a > b) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('请输入有效范围（1 ~ $total，且起始不大于结束）')));
-                return;
-              }
-              Navigator.pop(dctx);
-              _enqueueCache([for (int i = a - 1; i <= b - 1; i++) i]);
-            },
-            child: const Text('开始缓存'),
-          ),
-        ],
       ),
     );
   }
@@ -524,7 +394,7 @@ class _BookPageState extends State<BookPage> {
               SliverPersistentHeader(
                 pinned: true,
                 delegate: _ChapterHeaderDelegate(
-                  height: MediaQuery.of(context).padding.top + 44 + ((d != null && d.tracks.length > 100) ? 36 : 0),
+                  height: MediaQuery.of(context).padding.top + 51 + ((d != null && d.tracks.length > 100) ? 38 : 0),
                   child: _chapterHeader(context, dark, d),
                 ),
               ),
@@ -573,7 +443,7 @@ class _BookPageState extends State<BookPage> {
                               title: const Text('自定义范围缓存…'),
                               onTap: () {
                                 Navigator.pop(ctx);
-                                _customRangeDialog(d: d, defaultStart: t.index);
+                                showCustomRangeDialog(context, widget.item, d, defaultStart: t.index);
                               },
                             ),
                             ListTile(

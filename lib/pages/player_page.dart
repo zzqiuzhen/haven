@@ -14,6 +14,7 @@ import '../theme.dart';
 import '../util.dart';
 import '../widgets/bookmark_sheet.dart';
 import '../widgets/common.dart';
+import '../widgets/download_sheet.dart';
 import 'book_page.dart' show BookPage;
 
 /// 播放器页是否处于打开状态（供锁屏返回时判断是否直达播放器）
@@ -109,8 +110,11 @@ class _PlayerPageState extends State<PlayerPage> {
         onVerticalDragEnd: (d) {
           final vy = d.velocity.pixelsPerSecond.dy;
           if (_minimizeDrag > 110 || vy > 800) {
-            setState(() => _minimizeDrag = 0);
-            Navigator.pop(context);
+            // 不先复位：带着位移直接弹出（避免先回一帧再弹导致的闪一下）
+            final nav = Navigator.of(context);
+            nav.maybePop().then((_) {
+              if (mounted) setState(() => _minimizeDrag = 0);
+            });
           } else {
             setState(() => _minimizeDrag = 0);
           }
@@ -194,16 +198,34 @@ class _PlayerPageState extends State<PlayerPage> {
                           if (cacheLabel != null)
                             Padding(
                               padding: const EdgeInsets.only(top: 6),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(cacheActive > 0 ? Icons.downloading : Icons.check_circle, size: 13, color: C.teal),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(cacheLabel, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 11, color: C.teal)),
+                              child: GestureDetector(
+                                onTap: () => showDownloadSheet(
+                                  context: context,
+                                  item: item,
+                                  detail: engine.detail,
+                                  currentIndex: engine.index,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: C.teal.withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(20),
                                   ),
-                                ],
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(cacheActive > 0 ? Icons.downloading : Icons.check_circle, size: 13, color: C.teal),
+                                      const SizedBox(width: 4),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 250),
+                                        child: Text(cacheLabel, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 11, color: C.teal)),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      const Icon(Icons.expand_more, size: 14, color: C.teal),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
                         ],

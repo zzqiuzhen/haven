@@ -3,8 +3,8 @@ library;
 
 /// App 显示名
 const kAppName = 'Haven';
-const kAppVersion = '1.3.7';
-const kUserAgent = 'Haven/1.3.7 (iOS; Audiobookshelf Client)';
+const kAppVersion = '1.3.8';
+const kUserAgent = 'Haven/1.3.8 (iOS; Audiobookshelf Client)';
 
 /// 预置服务器（可在登录页选择或自定义）
 class PresetServer {
