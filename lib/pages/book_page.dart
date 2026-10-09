@@ -115,7 +115,7 @@ class _BookPageState extends State<BookPage> {
       if (t.ino.isEmpty) continue;
       if (codecNeedsTranscode(t.codec, t.mimeType)) { skipped++; continue; }
       final url = app.api.fileUrlFor(widget.item.id, t.ino);
-      cache.enqueue(bookId: widget.item.id, ino: t.ino, ext: t.ext.isNotEmpty ? t.ext : '.mp3', url: url);
+      cache.enqueue(bookId: widget.item.id, ino: t.ino, ext: CacheManager.mediaExt(ext: t.ext, mimeType: t.mimeType, codec: t.codec), url: url);
       n++;
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(

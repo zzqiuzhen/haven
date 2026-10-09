@@ -55,6 +55,8 @@ class PlayerEngine extends ChangeNotifier {
   int _loadSeq = 0; // 加载序号：后发加载取代先发，先发的失败/中断静默忽略
   bool _loading = false; // 是否有加载请求在途（错误流事件在此期间交给 catch 统一处理）
   bool _recovering = false; // 回退重试单飞锁，杜绝多重回退互相打断
+  final Set<String> _badLocalInos = {}; // 本地文件加载失败的章节（本运行内不再读本地）
+  String? _lastLoadUrl; // 最近一次加载的音源 URL（用于失败自愈判定）
   Uri? _artUri;
   DateTime _lastNotify = DateTime.now();
   DateTime _lastMeRefresh = DateTime.fromMillisecondsSinceEpoch(0);
@@ -438,19 +440,19 @@ class PlayerEngine extends ChangeNotifier {
 
   /// 本地缓存查找：
   /// 1) 转码书：固定 .m4a（AAC 缓存格式）
-  /// 2) 普通书：按 t.ext / 实际文件后缀查；若 ext 不可用则尝试 [".m4a", ".mp3", ".aac"] 任一存在
-  String? _localCachedFor(Track t) {
+  /// 2) 普通书：扩展名回退序列（含旧版可能写入的扩展名，命中后自动纠正）
+  /// [skipLocal] 或本运行内曾加载失败（_badLocalInos）时直接跳过本地
+  String? _localCachedFor(Track t, {bool skipLocal = false}) {
     final it = item;
     if (it == null || t.ino.isEmpty) return null;
+    if (skipLocal || _badLocalInos.contains(t.ino)) return null;
     if (codecNeedsTranscode(t.codec, t.mimeType)) {
       return cache.completePath(it.id, t.ino, '.m4a', validate: true);
     }
-    // 优先按声明后缀查；查不到就尝试常见音频后缀（含 m4a——大奉打更人、童林传等
-    // m4a 库的 audioFiles 没有 metadata.ext，必须靠这里兜底命中本地缓存）
     final declared = t.ext.isNotEmpty ? t.ext : null;
     final candidates = declared != null
-        ? <String>[declared, ..._fallbackExts.where((e) => e != declared)]
-        : _fallbackExts;
+        ? <String>[declared, ...CacheManager.fallbackExts.where((e) => e != declared)]
+        : CacheManager.fallbackExts;
     for (final ext in candidates) {
       final p = cache.completePath(it.id, t.ino, ext, validate: true);
       if (p != null) return p;
@@ -458,13 +460,42 @@ class PlayerEngine extends ChangeNotifier {
     return null;
   }
 
-  /// 缓存查找的扩展名回退序列（命中优先）
-  static const List<String> _fallbackExts = ['.m4a', '.mp3', '.aac', '.ogg', '.opus'];
-
   void _markDirectFailed(Track? t) {
     if (t != null && t.ino.isNotEmpty) _directBadInos.add(t.ino);
     _directFailCount += 1;
     if (_directFailCount >= 2) _directOk = false; // 多次失败视为网络层不可达，本次运行不再尝试直连
+  }
+
+  /// 本地文件加载失败时自愈：拉黑该章节、删除坏文件、后台重新排队下载
+  void _selfHealLocalFile(Track t, String fileUrl, {required String reason}) {
+    try {
+      final fp = Uri.parse(fileUrl).toFilePath();
+      if (!cache.isUnderRoot(fp)) return;
+      _badLocalInos.add(t.ino);
+      if (reason.toLowerCase().contains('timed out')) {
+        // 超时可能只是系统忙：先拉黑走网络，文件保留待下次会话再试
+        return;
+      }
+      debugPrint('本地缓存加载失败，自愈删除并重下: ${p.basename(fp)} ($reason)');
+      cache.removeCacheFile(fp);
+      final it = item;
+      if (it != null && t.ino.isNotEmpty) {
+        final isTrans = codecNeedsTranscode(t.codec, t.mimeType);
+        final url2 = isTrans
+            ? api.transcodedFileUrlFor(it.id, t.ino)
+            : ((t.contentUrl != null && t.contentUrl!.isNotEmpty)
+                ? api.fullTrackUrl(t.contentUrl!)
+                : api.fileUrlFor(it.id, t.ino));
+        cache.enqueue(
+          bookId: it.id,
+          ino: t.ino,
+          ext: isTrans ? '.m4a' : CacheManager.mediaExt(ext: t.ext, mimeType: t.mimeType, codec: t.codec),
+          url: url2,
+        );
+      }
+    } catch (e) {
+      debugPrint('self-heal failed: $e');
+    }
   }
 
   /// 直连就绪探测：≤1.5 秒快速判断直连地址是否可达；结果缓存（一次/运行）
@@ -489,7 +520,7 @@ class PlayerEngine extends ChangeNotifier {
       _usedFallback = true;
       if (wasDirect) _markDirectFailed(t);
       debugPrint('回退服务端重试: ${t.title}');
-      await _playTrackIndex(index, inTrack: inTrack, autoplay: autoplay, forceProxy: true);
+      await _playTrackIndex(index, inTrack: inTrack, autoplay: autoplay, forceProxy: true, skipLocal: true);
     } finally {
       _recovering = false;
     }
@@ -520,24 +551,29 @@ class PlayerEngine extends ChangeNotifier {
     return '无法播放：$raw';
   }
 
-  ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false}) {
+  ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false, bool skipLocal = false}) {
     final t = tracks[ti];
+    final allowLocal = !skipLocal && !_badLocalInos.contains(t.ino);
     // 转码书（AAC 缓存模式）：手机缓存的 AAC 文件 → 服务端单集转码直链
     if (codecNeedsTranscode(t.codec, t.mimeType)) {
-      final aac = t.ino.isEmpty ? null : cache.completePath(item!.id, t.ino, '.m4a', validate: true);
+      final aac = (allowLocal && t.ino.isNotEmpty)
+          ? cache.completePath(item!.id, t.ino, '.m4a', validate: true)
+          : null;
       if (aac != null) return (url: Uri.file(aac).toString(), headers: const {});
       if (t.ino.isNotEmpty && item != null) {
         return (url: api.transcodedFileUrlFor(item!.id, t.ino), headers: api.authHeaders);
       }
     }
-    // 1) 先按声明后缀查本地缓存
-    final declared = t.ext.isNotEmpty ? t.ext : null;
-    final candidates = declared != null
-        ? <String>[declared, ..._fallbackExts.where((e) => e != declared)]
-        : _fallbackExts;
-    for (final ext in candidates) {
-      final local = cache.completePath(item!.id, t.ino, ext, validate: true);
-      if (local != null) return (url: Uri.file(local).toString(), headers: const {});
+    // 1) 本地缓存（扩展名回退 + 内容校验）
+    if (allowLocal) {
+      final declared = t.ext.isNotEmpty ? t.ext : null;
+      final candidates = declared != null
+          ? <String>[declared, ...CacheManager.fallbackExts.where((e) => e != declared)]
+          : CacheManager.fallbackExts;
+      for (final ext in candidates) {
+        final local = cache.completePath(item!.id, t.ino, ext, validate: true);
+        if (local != null) return (url: Uri.file(local).toString(), headers: const {});
+      }
     }
     // 极速直连（302 到 115 CDN）：仅在可用时启用
     if (!forceProxy &&
@@ -556,12 +592,13 @@ class PlayerEngine extends ChangeNotifier {
     return (url: t.path, headers: const {});
   }
 
-  Future<void> _playTrackIndex(int ti, {double inTrack = 0, bool autoplay = true, bool forceProxy = false}) async {
+  Future<void> _playTrackIndex(int ti, {double inTrack = 0, bool autoplay = true, bool forceProxy = false, bool skipLocal = false}) async {
     if (ti < 0 || ti >= tracks.length) return;
     final t = tracks[ti];
     // 缓存优先：命中本地文件时绝不做任何网络探测（真·秒播）
-    final cachedLocal = _localCachedFor(t);
+    final cachedLocal = _localCachedFor(t, skipLocal: skipLocal);
     if (cachedLocal == null &&
+        !skipLocal &&
         !forceProxy &&
         settings.directMode &&
         _directOk == null &&
@@ -570,7 +607,8 @@ class PlayerEngine extends ChangeNotifier {
         !_directBadInos.contains(t.ino)) {
       await _ensureDirectProbed(t.path);
     }
-    final src = _sourceForTrack(ti, forceProxy: forceProxy);
+    final src = _sourceForTrack(ti, forceProxy: forceProxy, skipLocal: skipLocal);
+    _lastLoadUrl = src.url;
     index = ti;
     _absolute = t.startOffset + inTrack;
     _lastSourceDirect = !forceProxy && t.path.startsWith('http') && src.url == t.path;
@@ -598,6 +636,10 @@ class PlayerEngine extends ChangeNotifier {
       }
       debugPrint('setAudioSource 失败: $e');
       if (mySeq != _loadSeq) return; // 已有更新的加载在跑，交给它处理
+      // 本地文件加载失败：自愈（拉黑 + 删除坏文件 + 后台重下），随后回退网络
+      if (src.url.startsWith('file://')) {
+        _selfHealLocalFile(t, src.url, reason: msg);
+      }
       // AAC 缓存模式失败 → 回退 HLS 转码模式（安全网）
       if (_aacMode && !forceProxy && codecNeedsTranscode(t.codec, t.mimeType)) {
         _aacMode = false;
@@ -820,11 +862,16 @@ class PlayerEngine extends ChangeNotifier {
     if (_loading || _recovering) return;
     final t = track;
     debugPrint('player error: $e');
-    if (!_usedFallback && !hlsMode && t != null && _lastSourceDirect) {
+    // 本地文件播放中出错：自愈并回退网络
+    final lastUrl = _lastLoadUrl;
+    if (t != null && lastUrl != null && lastUrl.startsWith('file://')) {
+      _selfHealLocalFile(t, lastUrl, reason: '$e');
+    }
+    if (!_usedFallback && !hlsMode && t != null && (_lastSourceDirect || (lastUrl?.startsWith('file://') ?? false))) {
       final fb = _fallbackUrlFor(t);
       if (fb != null) {
         await _recoverToServer(t,
-            inTrack: player.position.inMilliseconds / 1000.0, autoplay: player.playing, wasDirect: true);
+            inTrack: player.position.inMilliseconds / 1000.0, autoplay: player.playing, wasDirect: _lastSourceDirect);
         return;
       }
     }
@@ -1020,20 +1067,8 @@ class PlayerEngine extends ChangeNotifier {
         continue;
       }
       if (probe) unawaited(warmTrack(i));
-      // 扩展名回退：audioFiles 没 ext 时按 mime/codec 推断；找不到时优先 m4a
-      // （大奉 m4a 实际就是 m4a，写成 .mp3 会让 completePath 永远命中失败）
-      String ext = nt.ext.isNotEmpty ? nt.ext : '';
-      if (ext.isEmpty) {
-        if (nt.mimeType.contains('mp4') || nt.mimeType.contains('aac') || nt.codec == 'mp4a.40.2' || nt.codec == 'aac') {
-          ext = '.m4a';
-        } else if (nt.mimeType.contains('mpeg') || nt.codec == 'mp3') {
-          ext = '.mp3';
-        } else if (nt.mimeType.contains('ogg') || nt.codec == 'opus') {
-          ext = '.opus';
-        } else {
-          ext = '.m4a';
-        }
-      }
+      // 缓存扩展名归一化：.strm 等非音频扩展 → 按 mime/codec 推断成音频扩展
+      final ext = CacheManager.mediaExt(ext: nt.ext, mimeType: nt.mimeType, codec: nt.codec);
       final url = (nt.contentUrl != null && nt.contentUrl!.isNotEmpty) ? api.fullTrackUrl(nt.contentUrl!) : api.fileUrlFor(it.id, nt.ino);
       cache.enqueue(bookId: it.id, ino: nt.ino, ext: ext, url: url);
     }
