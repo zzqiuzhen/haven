@@ -15,6 +15,7 @@ import '../widgets/common.dart';
 import 'book_page.dart';
 import 'player_page.dart';
 import 'recent_page.dart';
+import 'search_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -33,7 +34,7 @@ class HomePage extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
               child: GestureDetector(
-                onTap: () => app.setTab(2),
+                onTap: () => Navigator.of(context).push(SearchPage.route()),
                 child: Glass(
                   radius: 19,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

@@ -219,15 +219,24 @@ class Settings {
   // ---- 任务栏（底部导航）----
   bool get navShowDiscover => _sp.getBool('nav_show_discover') ?? true;
   bool get navShowLibrary => _sp.getBool('nav_show_library') ?? true;
-  bool get navShowSearch => _sp.getBool('nav_show_search') ?? true;
   bool get navIconsOnly => _sp.getBool('nav_icons_only') ?? false;
 
-  Future<void> setNavPrefs({bool? discover, bool? library, bool? search, bool? iconsOnly}) async {
+  Future<void> setNavPrefs({bool? discover, bool? library, bool? iconsOnly}) async {
     if (discover != null) await _sp.setBool('nav_show_discover', discover);
     if (library != null) await _sp.setBool('nav_show_library', library);
-    if (search != null) await _sp.setBool('nav_show_search', search);
     if (iconsOnly != null) await _sp.setBool('nav_icons_only', iconsOnly);
   }
+
+  // ---- 搜索历史 ----
+  List<String> get recentSearches => _sp.getStringList('recent_searches') ?? const [];
+  Future<void> addRecentSearch(String q) async {
+    final list = _sp.getStringList('recent_searches') ?? <String>[];
+    list.remove(q);
+    list.insert(0, q);
+    if (list.length > 10) list.removeRange(10, list.length);
+    await _sp.setStringList('recent_searches', list);
+  }
+  Future<void> clearRecentSearches() => _sp.setStringList('recent_searches', <String>[]);
 
   // ---- 后台状态持久化（锁屏/进程被杀后回前台判定直达用）----
   int? get bgAtMs {

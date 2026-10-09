@@ -366,19 +366,30 @@ class AppState extends ChangeNotifier {
   // ---- 任务栏（底部导航）----
   bool get navShowDiscover => settings.navShowDiscover;
   bool get navShowLibrary => settings.navShowLibrary;
-  bool get navShowSearch => settings.navShowSearch;
   bool get navIconsOnly => settings.navIconsOnly;
 
-  Future<void> setNavPrefs({bool? discover, bool? library, bool? search, bool? iconsOnly}) async {
-    await settings.setNavPrefs(discover: discover, library: library, search: search, iconsOnly: iconsOnly);
+  Future<void> setNavPrefs({bool? discover, bool? library, bool? iconsOnly}) async {
+    await settings.setNavPrefs(discover: discover, library: library, iconsOnly: iconsOnly);
     // 若当前所在 tab 被隐藏 → 自动切到第一个可见的
     final visible = <int>[
       if (settings.navShowDiscover) 0,
       if (settings.navShowLibrary) 1,
-      if (settings.navShowSearch) 2,
-      3,
+      2,
     ];
     if (!visible.contains(tab)) tab = visible.first;
+    notifyListeners();
+  }
+
+  // ---- 搜索历史 ----
+  List<String> get recentSearches => settings.recentSearches;
+
+  Future<void> addRecentSearch(String q) async {
+    await settings.addRecentSearch(q);
+    notifyListeners();
+  }
+
+  Future<void> clearRecentSearches() async {
+    await settings.clearRecentSearches();
     notifyListeners();
   }
 }

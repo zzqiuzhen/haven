@@ -13,7 +13,6 @@ import 'home_page.dart';
 import 'library_page.dart';
 import 'me_page.dart';
 import 'player_page.dart';
-import 'search_page.dart';
 
 class ShellPage extends StatelessWidget {
   const ShellPage({super.key});
@@ -30,7 +29,7 @@ class ShellPage extends StatelessWidget {
           Positioned.fill(
             child: IndexedStack(
               index: app.tab,
-              children: const [HomePage(), LibraryPage(), SearchPage(), MePage()],
+              children: const [HomePage(), LibraryPage(), MePage()],
             ),
           ),
           const Positioned(left: 0, right: 0, bottom: 0, child: BottomDock()),
@@ -54,8 +53,7 @@ class BottomDock extends StatelessWidget {
     final entries = <(IconData, IconData, String, int)>[
       if (app.navShowDiscover) (Icons.explore_outlined, Icons.explore, '发现', 0),
       if (app.navShowLibrary) (Icons.library_books_outlined, Icons.library_books, '书库', 1),
-      if (app.navShowSearch) (Icons.search, Icons.search, '搜索', 2),
-      (Icons.person_outline, Icons.person, '我的', 3),
+      (Icons.person_outline, Icons.person, '我的', 2),
     ];
     final iconsOnly = app.navIconsOnly;
 
