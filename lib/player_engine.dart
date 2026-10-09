@@ -177,7 +177,13 @@ class PlayerEngine extends ChangeNotifier {
       if (autoplay) unawaited(player.play());
       return;
     }
-    await stopAndClose(closeSession: true);
+    // 切书瞬时化：旧会话的关闭同步放到后台（进度已本地持久化），不阻塞新书加载；
+    // 播放器无需 stop——下一次 setAudioSource 会自然接替旧音源
+    _closeSessionInBackground();
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    _listenTimer?.cancel();
+    _listenTimer = null;
     item = it;
     detail = null;
     session = null;
@@ -195,7 +201,7 @@ class PlayerEngine extends ChangeNotifier {
       await player.setSpeed(sp);
       final needTranscode = detail!.tracks.any((t) => codecNeedsTranscode(t.codec, t.mimeType));
       if (needTranscode) {
-        // WMA 等转码书：AAC 缓存模式（服务器按需单集转码并缓存；手机缓存后本地秒播）
+        // WMA 等转码书：AAC 缓存模式（服务器按需边转边播单集，手机缓存后本地秒播）
         _aacMode = true;
         await _startAt(start, autoplay: autoplay);
         unawaited(_ensureSession());
@@ -224,6 +230,27 @@ class PlayerEngine extends ChangeNotifier {
     }
     loading = false;
     notifyListeners();
+  }
+
+  /// 后台关闭旧会话（切书不等待网络；进度已本地持久化，失败无碍）
+  void _closeSessionInBackground() {
+    final s = session;
+    final abs = _absolute;
+    final listened = _unsynced;
+    final dur = duration;
+    _persistPos(force: true);
+    if (s != null) {
+      if (abs > 0.5) {
+        unawaited(api.closeSession(s.id, sync: {
+          'currentTime': abs,
+          'timeListened': listened,
+          'duration': dur,
+        }).catchError((_) {}));
+      } else {
+        unawaited(api.closeSession(s.id).catchError((_) {}));
+      }
+    }
+    unawaited(_refreshMe());
   }
 
   /// 后台补建播放会话（用于进度同步与后续章节 contentUrl）；失败不阻塞播放
@@ -368,8 +395,8 @@ class PlayerEngine extends ChangeNotifier {
 
   PlaySession? _preSession;
 
-  /// 进入书籍详情页时调用：转码书（AAC 模式）提前让服务器生成“当前集+下一集”的 AAC 缓存，
-  /// 用户点播放时已就绪，起播快
+  /// 进入书籍详情页时调用：转码书（AAC 模式）提前把“当前集+下一集”排队下载到手机
+  /// （下载请求会驱动服务器提前边转边播并落缓存），用户点播放时已就绪或正在流水
   Future<void> prewarmTranscode(LibItem it) async {
     if (kIsWeb || _closing) return;
     try {
@@ -387,7 +414,7 @@ class PlayerEngine extends ChangeNotifier {
         if (i < 0 || i >= d.tracks.length) continue;
         final t = d.tracks[i];
         if (t.ino.isEmpty) continue;
-        unawaited(api.warm(api.transcodedFileUrlFor(it.id, t.ino)));
+        cache.enqueue(bookId: it.id, ino: t.ino, ext: '.m4a', url: api.transcodedFileUrlFor(it.id, t.ino));
       }
     } catch (_) {}
   }
@@ -481,7 +508,7 @@ class PlayerEngine extends ChangeNotifier {
 
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false}) {
     final t = tracks[ti];
-    // 转码书（AAC 缓存模式）：手机缓存的 AAC 文件 → 服务端单集转码缓存直链
+    // 转码书（AAC 缓存模式）：手机缓存的 AAC 文件 → 服务端单集转码直链
     if (codecNeedsTranscode(t.codec, t.mimeType)) {
       final aac = t.ino.isEmpty ? null : cache.completePath(item!.id, t.ino, '.m4a', validate: true);
       if (aac != null) return (url: Uri.file(aac).toString(), headers: const {});
@@ -532,11 +559,13 @@ class PlayerEngine extends ChangeNotifier {
     if (ti == 0 && settings.skipIntro > 0 && pos < 1) pos = settings.skipIntro.toDouble();
     final mySeq = ++_loadSeq;
     _loading = true;
+    // AAC 模式首播要等服务器"边转边播"的首包，放宽超时；普通文件 10 秒足够
+    final loadTimeout = _aacMode ? const Duration(seconds: 45) : const Duration(seconds: 10);
     try {
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(src.url), headers: src.headers),
         initialPosition: Duration(milliseconds: (pos * 1000).round()),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(loadTimeout);
     } on PlayerInterruptedException {
       // 被更新的加载请求取代：正常切换流程，静默忽略
       debugPrint('加载被新请求取代（忽略）');
@@ -682,8 +711,13 @@ class PlayerEngine extends ChangeNotifier {
         _usedFallback = false;
         await _playTrackIndex(ti, inTrack: inTrack, autoplay: true);
       }
-      // AAC 转码书：让服务端提前生成目标集
-      if (_aacMode) unawaited(warmTrack(ti));
+      // AAC 转码书：目标集排队下载（重听秒播）
+      if (_aacMode) {
+        final t2 = tracks[ti];
+        if (t2.ino.isNotEmpty && item != null) {
+          cache.enqueue(bookId: item!.id, ino: t2.ino, ext: '.m4a', url: api.transcodedFileUrlFor(item!.id, t2.ino));
+        }
+      }
     }
     _warmAhead();
   }
@@ -741,7 +775,7 @@ class PlayerEngine extends ChangeNotifier {
   }
 
   Future<void> _onCompleted() async {
-    if (_closing) return;
+    if (_closing || loading) return;
     if (sleepMode == SleepMode.endOfChapter) {
       sleepMode = SleepMode.off;
       notifyListeners();
@@ -900,7 +934,7 @@ class PlayerEngine extends ChangeNotifier {
   // ---------------- 预取 / 预热 ----------------
 
   /// 预热某章（同时承担“触发服务端窗口本地化 / AAC 生成”的职责）：
-  /// - 转码书 AAC 模式：提前让服务端生成该集 AAC 缓存
+  /// - 转码书 AAC 模式：排队下载该集到手机（服务端边转边播并将结果落盘）
   /// - 传统 HLS 转码书：探测 /file/ 入口触发窗口本地化
   /// - 直连已确认可用：走直连预热（顺带预检 CDN attachment，提前拉黑这类文件）
   /// - 其他：走服务端预热（解析 302 直链）
@@ -911,8 +945,7 @@ class PlayerEngine extends ChangeNotifier {
       if (codecNeedsTranscode(t.codec, t.mimeType)) {
         if (item == null || t.ino.isEmpty) return;
         if (_aacMode) {
-          // 让服务端提前生成该集 AAC 缓存（Range 0-1 轻量探测）
-          await api.warm(api.transcodedFileUrlFor(item!.id, t.ino));
+          cache.enqueue(bookId: item!.id, ino: t.ino, ext: '.m4a', url: api.transcodedFileUrlFor(item!.id, t.ino));
         } else {
           // 传统 HLS：探测 /file/ 入口触发窗口本地化
           await api.warm(api.fileUrlFor(item!.id, t.ino));
@@ -945,7 +978,7 @@ class PlayerEngine extends ChangeNotifier {
 
   /// 预取后续章节：[probe] 控制是否顺带做 2 字节预热请求。
   /// - 普通书：下载服务端原文件到手机（本地镜像优先，稳定且快）
-  /// - 转码书 AAC 模式：下载服务端单集转码缓存（.m4a）到手机 → 本地秒播
+  /// - 转码书 AAC 模式：下载服务端单集转码结果（.m4a）到手机 → 本地秒播；当前集也下载
   /// - 传统 HLS 转码书：对“下一集”发一次探测，触发服务端窗口本地化
   void _warmAhead({bool probe = true}) {
     final it = item;
@@ -960,7 +993,6 @@ class PlayerEngine extends ChangeNotifier {
       final isTrans = codecNeedsTranscode(nt.codec, nt.mimeType);
       if (isTrans) {
         if (_aacMode) {
-          // AAC 缓存模式：把“后 N 集”直接下载到手机（服务端按需转码并缓存）
           cache.enqueue(bookId: it.id, ino: nt.ino, ext: '.m4a', url: api.transcodedFileUrlFor(it.id, nt.ino));
         } else if (probe && i == index + 1) {
           // 传统转码书：对“下一集”发一次探测，触发服务端窗口本地化
@@ -972,6 +1004,13 @@ class PlayerEngine extends ChangeNotifier {
       final ext = nt.ext.isNotEmpty ? nt.ext : '.mp3';
       final url = (nt.contentUrl != null && nt.contentUrl!.isNotEmpty) ? api.fullTrackUrl(nt.contentUrl!) : api.fileUrlFor(it.id, nt.ino);
       cache.enqueue(bookId: it.id, ino: nt.ino, ext: ext, url: url);
+    }
+    // AAC 模式：把“当前集”也排队下载到手机（重听/回退时本地秒播）
+    if (_aacMode && index >= 0 && index < tracks.length) {
+      final cur = tracks[index];
+      if (cur.ino.isNotEmpty) {
+        cache.enqueue(bookId: it.id, ino: cur.ino, ext: '.m4a', url: api.transcodedFileUrlFor(it.id, cur.ino));
+      }
     }
   }
 
