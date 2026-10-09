@@ -15,13 +15,23 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _serverCtl = TextEditingController(text: kPresetServers.first.url);
+  final _serverCtl = TextEditingController();
   final _userCtl = TextEditingController();
   final _passCtl = TextEditingController();
   bool _busy = false;
   String? _error;
   bool _obscure = true;
-  int _preset = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // 带出上次使用的服务器与用户名（登出后再登录时免重新输入）
+    try {
+      final s = context.read<AppState>().settings;
+      _serverCtl.text = s.serverUrl ?? '';
+      _userCtl.text = s.username ?? '';
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -74,26 +84,11 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 36),
               const Text('服务器', style: TS.title),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (int i = 0; i < kPresetServers.length; i++)
-                    ChoiceChip(
-                      label: Text(kPresetServers[i].label),
-                      selected: _preset == i,
-                      onSelected: (_) => setState(() {
-                        _preset = i;
-                        _serverCtl.text = kPresetServers[i].url;
-                      }),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
               TextField(
                 controller: _serverCtl,
                 keyboardType: TextInputType.url,
-                decoration: const InputDecoration(hintText: 'http://服务器地址:端口/audiobookshelf'),
+                autocorrect: false,
+                decoration: const InputDecoration(hintText: '例如 http://192.168.x.x:13378/audiobookshelf'),
               ),
               const SizedBox(height: 22),
               const Text('账号', style: TS.title),

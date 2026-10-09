@@ -3,21 +3,8 @@ library;
 
 /// App 显示名
 const kAppName = 'Haven';
-const kAppVersion = '1.3.9';
-const kUserAgent = 'Haven/1.3.9 (iOS; Audiobookshelf Client)';
-
-/// 预置服务器（可在登录页选择或自定义）
-class PresetServer {
-  final String label;
-  final String url;
-  const PresetServer(this.label, this.url);
-}
-
-const kPresetServers = <PresetServer>[
-  PresetServer('Tailscale（推荐·内外网通用）', 'http://0.0.0.0:13378/audiobookshelf'),
-  PresetServer('局域网', 'http://0.0.0.0:13378/audiobookshelf'),
-  PresetServer('公网', 'https://example.com:8443/audiobookshelf'),
-];
+const kAppVersion = '1.3.10';
+const kUserAgent = 'Haven/1.3.10 (iOS; Audiobookshelf Client)';
 
 /// 播放默认设置
 class PlayDefaults {

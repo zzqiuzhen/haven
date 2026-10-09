@@ -20,7 +20,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sp = await SharedPreferences.getInstance();
   final settings = Settings(sp);
-  final api = Api(settings.serverUrl ?? kPresetServers.first.url)..token = settings.token;
+  final api = Api(settings.serverUrl ?? '')..token = settings.token;
   final cache = CacheManager(api);
   await cache.init();
   final engine = PlayerEngine(api: api, cache: cache, settings: settings);
