@@ -26,8 +26,8 @@ Widget _libChip({required bool darkChip, required String label, required bool se
       decoration: BoxDecoration(
         borderRadius: R.pill,
         gradient: sel ? const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF1F66C9)]) : null,
-        color: sel ? null : (darkChip ? C.dCard.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.55)),
-        border: sel ? null : Border.all(color: darkChip ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.7)),
+        color: sel ? null : (darkChip ? C.dCard : Colors.white),
+        border: sel ? null : Border.all(color: darkChip ? Colors.white.withValues(alpha: 0.08) : C.line),
         boxShadow: sel ? [BoxShadow(color: C.primary.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))] : null,
       ),
       child: Text(label,

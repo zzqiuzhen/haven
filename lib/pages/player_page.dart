@@ -671,7 +671,7 @@ class _RoundIcon extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: (dark ? C.dCard : Colors.white).withValues(alpha: 0.75),
+          color: (dark ? C.dCard : Colors.white),
         ),
         child: Icon(icon, size: iconSize),
       ),

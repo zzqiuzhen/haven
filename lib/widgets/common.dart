@@ -258,52 +258,16 @@ class Glass extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final a = alpha ?? (dark ? 0.52 : 0.58);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            color: (tint ?? (dark ? const Color(0xFF20262E) : Colors.white)).withValues(alpha: a),
-            border: Border.all(
-              color: dark ? Colors.transparent : Colors.white.withValues(alpha: 0.68),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.4 : 0.08), blurRadius: 24, offset: const Offset(0, 8)),
-            ],
-          ),
-          child: (highlight && !dark)
-              ? Stack(children: [
-                  child,
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 1.4,
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              Colors.white.withValues(alpha: 0),
-                              Colors.white.withValues(alpha: 0.7),
-                              Colors.white.withValues(alpha: 0),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ])
-              : child,
-        ),
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        color: tint ?? (dark ? C.dCard : Colors.white),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.30 : 0.06), blurRadius: 20, offset: const Offset(0, 6)),
+        ],
       ),
+      child: child,
     );
   }
 }

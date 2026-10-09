@@ -496,7 +496,7 @@ class _CircleBtn extends StatelessWidget {
         width: 38,
         height: 38,
         decoration: BoxDecoration(
-          color: (dark ? C.dCard : Colors.white).withValues(alpha: 0.85),
+          color: (dark ? C.dCard : Colors.white),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, size: 20),
