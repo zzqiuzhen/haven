@@ -312,15 +312,6 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                           children: [
                             Text(fmtDur(chapPos), style: TS.mini.copyWith(fontSize: 12)),
                             const Spacer(),
-                            GestureDetector(
-                              onTap: () => _addBookmark(context, engine),
-                              child: const Row(children: [
-                                Icon(Icons.bookmark_add_outlined, size: 14, color: C.text2),
-                                SizedBox(width: 4),
-                                Text('添加书签', style: TextStyle(fontSize: 12, color: C.text2)),
-                              ]),
-                            ),
-                            const Spacer(),
                             Text(fmtDur(chapDur), style: TS.mini.copyWith(fontSize: 12)),
                           ],
                         ),
