@@ -1,7 +1,12 @@
 /// 我的：账号 / 内容入口 / 设置
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../consts.dart';
@@ -10,6 +15,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'downloads_page.dart';
 import 'recent_page.dart';
+import 'settings_home_page.dart';
 import 'settings_playback_page.dart';
 
 class MePage extends StatelessWidget {
@@ -38,19 +44,7 @@ class MePage extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 54,
-                      height: 54,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(colors: [Color(0xFF5B7CFA), Color(0xFF8B5CF6)]),
-                      ),
-                      child: Text(
-                        (me?.username.isNotEmpty ?? false) ? me!.username.characters.first.toUpperCase() : '?',
-                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
-                      ),
-                    ),
+                    _AvatarTap(username: me?.username ?? ''),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -95,6 +89,9 @@ class MePage extends StatelessWidget {
           _MenuCard(items: [
             _MenuItem(Icons.tune, C.orange, '播放设置', '倍速 / 跳过 / 同步 / 缓存', () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PlaybackSettingsPage()));
+            }),
+            _MenuItem(Icons.dashboard_customize_outlined, C.teal, '发现页设置', '模块显示与排序', () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HomeSettingsPage()));
             }),
             _MenuItem(Icons.dns_outlined, C.primary, '服务器', app.api.baseUrl, () => _showServer(context, app)),
             _MenuItem(Icons.palette_outlined, C.purple, '主题模式', switch (app.settings.themeMode) {
@@ -263,6 +260,140 @@ class _MenuCard extends StatelessWidget {
             if (i != items.length - 1)
               const Divider(height: 1, indent: 66, endIndent: 14),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 头像按钮：点击可自定义（相册选择 / 恢复默认）
+class _AvatarTap extends StatefulWidget {
+  const _AvatarTap({required this.username});
+  final String username;
+  @override
+  State<_AvatarTap> createState() => _AvatarTapState();
+}
+
+class _AvatarTapState extends State<_AvatarTap> {
+  File? _file;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<File> _avatarFile() async {
+    final base = await getApplicationSupportDirectory();
+    return File(p.join(base.path, 'avatar.jpg'));
+  }
+
+  Future<void> _load() async {
+    try {
+      final f = await _avatarFile();
+      if (f.existsSync() && mounted) setState(() => _file = f);
+    } catch (_) {}
+  }
+
+  Future<void> _onTap() async {
+    final act = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(padding: EdgeInsets.all(14), child: Text('头像', style: TS.title)),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: C.primary),
+              title: const Text('从相册选择图片'),
+              onTap: () => Navigator.pop(ctx, 'pick'),
+            ),
+            if (_file != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: C.red),
+                title: const Text('恢复默认头像'),
+                onTap: () => Navigator.pop(ctx, 'reset'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (act == 'pick') {
+      setState(() => _busy = true);
+      try {
+        final x = await ImagePicker().pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 800,
+          maxHeight: 800,
+          imageQuality: 86,
+        );
+        if (x != null) {
+          final bytes = await x.readAsBytes();
+          if (bytes.isNotEmpty) {
+            final f = await _avatarFile();
+            await f.writeAsBytes(bytes, flush: true);
+            if (mounted) setState(() => _file = f);
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('选择头像失败：$e')));
+        }
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+    } else if (act == 'reset') {
+      try {
+        final f = await _avatarFile();
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+      if (mounted) setState(() => _file = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final letter = widget.username.isNotEmpty ? widget.username.characters.first.toUpperCase() : '?';
+    final f = _file;
+    return GestureDetector(
+      onTap: _busy ? null : _onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipOval(
+            child: SizedBox(
+              width: 58,
+              height: 58,
+              child: f != null
+                  ? Image.file(f, fit: BoxFit.cover)
+                  : Container(
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(colors: [Color(0xFF5B7CFA), Color(0xFF8B5CF6)]),
+                      ),
+                      child: Text(letter, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)),
+                    ),
+            ),
+          ),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: 20,
+              height: 20,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: C.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 1.5),
+              ),
+              child: _busy
+                  ? const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.8, color: Colors.white))
+                  : const Icon(Icons.photo_camera, size: 11, color: Colors.white),
+            ),
+          ),
         ],
       ),
     );

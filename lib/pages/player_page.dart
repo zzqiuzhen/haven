@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import '../cache_manager.dart';
 import '../player_engine.dart';
+import '../state.dart';
 import '../theme.dart';
 import '../util.dart';
 import '../widgets/bookmark_sheet.dart';
@@ -334,7 +335,7 @@ class _PlayerPageState extends State<PlayerPage> {
     final item = engine.item;
     if (item == null) return;
     try {
-      await engine.api.addBookmark(item.id, engine.absolute, engine.track?.title ?? '');
+      await context.read<AppState>().addBookmarkAt(item, engine.absolute, engine.track?.title ?? '');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('书签已添加 · ${fmtDur(engine.absolute)}')));
       }

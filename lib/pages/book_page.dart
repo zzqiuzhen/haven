@@ -192,7 +192,7 @@ class _BookPageState extends State<BookPage> {
       return;
     }
     try {
-      await app.api.addBookmark(widget.item.id, engine.absolute, engine.track?.title ?? '');
+      await app.addBookmarkAt(widget.item, engine.absolute, engine.track?.title ?? '');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('书签已添加 · ${fmtDur(engine.absolute)}'),

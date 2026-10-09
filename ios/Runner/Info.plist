@@ -41,6 +41,8 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于连接局域网或 Tailscale 内的 Audiobookshelf 服务器</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于从相册选择自定义头像</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

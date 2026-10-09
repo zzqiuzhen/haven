@@ -281,7 +281,7 @@ class CacheManager extends ChangeNotifier {
   /// 查找已完成的缓存文件（任意已知扩展名；含旧扩展名自动纠正）
   String? _findComplete(String bookId, String ino, String preferExt) {
     final wantExt = mediaExt(ext: preferExt);
-    for (final e in <String>[wantExt, ...fallbackExts, ..._legacyCacheExts].toSet()) {
+    for (final e in {wantExt, ...fallbackExts, ..._legacyCacheExts}) {
       final path = completePath(bookId, ino, e, validate: true);
       if (path != null) return path;
     }

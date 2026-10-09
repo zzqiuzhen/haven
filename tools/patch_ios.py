@@ -24,6 +24,7 @@ def patch_info_plist():
     pl['CFBundleDevelopmentRegion'] = 'zh_CN'
     pl['CFBundleLocalizations'] = ['zh_CN']
     pl['NSLocalNetworkUsageDescription'] = '用于连接局域网或 Tailscale 内的 Audiobookshelf 服务器'
+    pl['NSPhotoLibraryUsageDescription'] = '用于从相册选择自定义头像'
     pl['ITSAppUsesNonExemptEncryption'] = False
     pl['CADisableMinimumFrameDurationOnPhone'] = True
     with open(p, 'wb') as f:

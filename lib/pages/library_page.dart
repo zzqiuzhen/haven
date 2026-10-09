@@ -8,6 +8,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/global_bookmarks_sheet.dart';
 import 'book_page.dart';
 
 class LibraryPage extends StatefulWidget {
@@ -117,6 +118,12 @@ class _LibraryPageState extends State<LibraryPage> {
               children: [
                 const Text('书库', style: TS.h1),
                 const Spacer(),
+                IconButton(
+                  tooltip: '书签',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.bookmarks_outlined, size: 20, color: C.text2),
+                  onPressed: () => showGlobalBookmarksSheet(context: context),
+                ),
                 PopupMenuButton<String>(
                   initialValue: _sort,
                   onSelected: (v) {

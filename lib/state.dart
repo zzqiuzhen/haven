@@ -332,4 +332,31 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  // ---- 发现页模块（显隐与排序）----
+  List<(String, bool)> get homeModules => settings.homeModules;
+
+  Future<void> updateHomeModules(List<(String, bool)> v) async {
+    await settings.setHomeModules(v);
+    notifyListeners();
+  }
+
+  // ---- 书签（服务端 + 本地索引同步维护）----
+  Future<void> addBookmarkAt(LibItem? item, double abs, String title) async {
+    if (item == null || abs <= 0) return;
+    await api.addBookmark(item.id, abs, title);
+    await settings.recordBookmark(
+      itemId: item.id,
+      bookTitle: item.meta.title,
+      author: item.meta.authorText,
+      time: abs,
+      title: title,
+    );
+  }
+
+  Future<void> removeBookmarkAt(LibItem? item, double time) async {
+    if (item == null) return;
+    await api.removeBookmark(item.id, time);
+    await settings.unrecordBookmark(item.id, time);
+  }
 }

@@ -6,7 +6,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../consts.dart';
 import '../models.dart';
 import '../player_engine.dart';
 import '../state.dart';
@@ -35,10 +34,8 @@ class HomePage extends StatelessWidget {
                 padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
                 child: LinearProgressIndicator(minHeight: 3),
               ),
-            _ContinueSection(app: app),
-            _StatsSection(stats: app.stats),
-            _NewSection(app: app),
-            _LibSection(app: app),
+            for (final m in app.homeModules)
+              if (m.$2) _module(m.$1, app),
             if (app.homeError != null)
               Padding(
                 padding: const EdgeInsets.all(20),
@@ -49,6 +46,21 @@ class HomePage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 按设置渲染发现页模块
+Widget _module(String id, AppState app) {
+  switch (id) {
+    case 'continue':
+      return _ContinueSection(app: app);
+    case 'stats':
+      return _StatsSection(stats: app.stats);
+    case 'new':
+      return _NewSection(app: app);
+    case 'libs':
+      return _LibSection(app: app);
+  }
+  return const SizedBox.shrink();
 }
 
 class _Header extends StatelessWidget {
@@ -64,8 +76,6 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('发现', style: TS.h1),
-              const SizedBox(height: 4),
-              Text('${todayLabel()} · v$kAppVersion', style: TS.sub),
             ],
           ),
         ),

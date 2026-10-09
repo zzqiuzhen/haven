@@ -128,4 +128,91 @@ class Settings {
   Future<void> clearLastPos() async {
     await _sp.remove('last_pos');
   }
+
+  // ---- 发现页模块（显隐与排序）----
+  static const List<String> homeModuleIds = ['continue', 'stats', 'new', 'libs'];
+
+  List<(String, bool)> get homeModules {
+    try {
+      final raw = _sp.getString('home_modules');
+      if (raw != null && raw.isNotEmpty) {
+        final l = jsonDecode(raw) as List;
+        final out = <(String, bool)>[];
+        for (final e in l) {
+          if (e is Map) {
+            final id = e['id']?.toString() ?? '';
+            if (id.isEmpty) continue;
+            out.add((id, e['on'] != false));
+          }
+        }
+        // 升级场景：补齐后新增的模块（追加到末尾，默认显示）
+        for (final id in homeModuleIds) {
+          if (!out.any((m) => m.$1 == id)) out.add((id, true));
+        }
+        if (out.isNotEmpty) return out;
+      }
+    } catch (_) {}
+    return [for (final id in homeModuleIds) (id, true)];
+  }
+
+  Future<void> setHomeModules(List<(String, bool)> v) async {
+    await _sp.setString('home_modules', jsonEncode([for (final m in v) {'id': m.$1, 'on': m.$2}]));
+  }
+
+  // ---- 书签本地索引（书库页全局书签用）----
+  List<Map<String, dynamic>> get bookmarkIndex {
+    try {
+      final raw = _sp.getString('bookmark_index');
+      if (raw == null || raw.isEmpty) return [];
+      return [for (final e in (jsonDecode(raw) as List)) if (e is Map) e.cast<String, dynamic>()];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> setBookmarkIndex(List<Map<String, dynamic>> v) async {
+    await _sp.setString('bookmark_index', jsonEncode(v));
+  }
+
+  bool get bookmarksSeeded => _sp.getBool('bookmark_seeded_v1') ?? false;
+  Future<void> setBookmarksSeeded(bool v) async => _sp.setBool('bookmark_seeded_v1', v);
+
+  Future<void> recordBookmark({
+    required String itemId,
+    required String bookTitle,
+    required String author,
+    required double time,
+    required String title,
+  }) async {
+    final list = bookmarkIndex;
+    list.removeWhere((e) {
+      final t = (e['time'] as num?)?.toDouble() ?? -9e9;
+      return e['itemId'] == itemId && (t - time).abs() < 1.0;
+    });
+    list.add({
+      'itemId': itemId,
+      'bookTitle': bookTitle,
+      'author': author,
+      'time': time,
+      'title': title,
+      'ts': DateTime.now().millisecondsSinceEpoch,
+    });
+    await setBookmarkIndex(list);
+  }
+
+  Future<void> unrecordBookmark(String itemId, double time) async {
+    final list = bookmarkIndex;
+    list.removeWhere((e) {
+      final t = (e['time'] as num?)?.toDouble() ?? -9e9;
+      return e['itemId'] == itemId && (t - time).abs() < 1.0;
+    });
+    await setBookmarkIndex(list);
+  }
+
+  /// 用服务端扫描结果同步（替换已扫描书籍的书签；未扫描的保留）
+  Future<void> syncBookmarksFromServer(Set<String> scannedIds, List<Map<String, dynamic>> found) async {
+    final list = bookmarkIndex.where((e) => !scannedIds.contains(e['itemId']?.toString() ?? '')).toList();
+    list.addAll(found);
+    await setBookmarkIndex(list);
+  }
 }

@@ -2,10 +2,12 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../api.dart';
 import '../models.dart';
 import '../player_engine.dart';
+import '../state.dart';
 import '../util.dart';
 import '../pages/player_page.dart';
 
@@ -75,7 +77,7 @@ class _BookmarkSheetState extends State<_BookmarkSheet> {
 
   Future<void> _remove(Bookmark b) async {
     try {
-      await widget.api.removeBookmark(widget.item.id, b.time);
+      await context.read<AppState>().removeBookmarkAt(widget.item, b.time);
     } catch (_) {}
     if (mounted) setState(() => _list?.remove(b));
   }
