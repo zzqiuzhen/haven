@@ -551,6 +551,21 @@ class PlayerEngine extends ChangeNotifier {
     return '无法播放：$raw';
   }
 
+  /// 诊断上报：写一行到服务器日志（仅排查用，失败静默）
+  void _diag(String payload) {
+    final it = item;
+    if (it == null) return;
+    final t = (index >= 0 && index < tracks.length) ? tracks[index] : null;
+    if (t == null || t.ino.isEmpty) return;
+    final trimmed = payload.length > 400 ? payload.substring(0, 400) : payload;
+    final url = '${api.transcodedFileUrlFor(it.id, t.ino)}&havendiag=${Uri.encodeComponent(trimmed)}';
+    unawaited(() async {
+      try {
+        await api.dio.get(url, options: Options(headers: api.authHeaders, receiveTimeout: const Duration(seconds: 8)));
+      } catch (_) {}
+    }());
+  }
+
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false, bool skipLocal = false}) {
     final t = tracks[ti];
     final allowLocal = !skipLocal && !_badLocalInos.contains(t.ino);
@@ -609,6 +624,10 @@ class PlayerEngine extends ChangeNotifier {
     }
     final src = _sourceForTrack(ti, forceProxy: forceProxy, skipLocal: skipLocal);
     _lastLoadUrl = src.url;
+    // 诊断：转码书本地未命中时上报缓存目录快照（服务端日志可查，便于定位"缓存了却没命中"）
+    if (cachedLocal == null && !skipLocal && t.ino.isNotEmpty && codecNeedsTranscode(t.codec, t.mimeType) && item != null) {
+      _diag('miss|${t.ino}|${cache.dirSnippet(item!.id)}');
+    }
     index = ti;
     _absolute = t.startOffset + inTrack;
     _lastSourceDirect = !forceProxy && t.path.startsWith('http') && src.url == t.path;
@@ -616,8 +635,8 @@ class PlayerEngine extends ChangeNotifier {
     if (ti == 0 && settings.skipIntro > 0 && pos < 1) pos = settings.skipIntro.toDouble();
     final mySeq = ++_loadSeq;
     _loading = true;
-    // AAC 模式首播要等服务器"边转边播"的首包，放宽超时；普通文件 10 秒足够
-    final loadTimeout = _aacMode ? const Duration(seconds: 45) : const Duration(seconds: 10);
+    // AAC 模式首播要等服务器"边转边播"的首包（修复后 1~3 秒）；30 秒容错上限
+    final loadTimeout = _aacMode ? const Duration(seconds: 30) : const Duration(seconds: 10);
     try {
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(src.url), headers: src.headers),
@@ -640,8 +659,9 @@ class PlayerEngine extends ChangeNotifier {
       if (src.url.startsWith('file://')) {
         _selfHealLocalFile(t, src.url, reason: msg);
       }
-      // AAC 缓存模式失败 → 回退 HLS 转码模式（安全网）
+      // AAC 缓存模式失败 → 回退 HLS 转码模式（安全网；下次点新章节会自动重试 AAC）
       if (_aacMode && !forceProxy && codecNeedsTranscode(t.codec, t.mimeType)) {
+        _diag('err|${t.ino}|${msg.replaceAll('\n', ' ')}');
         _aacMode = false;
         debugPrint('AAC 缓存模式失败，回退 HLS 转码');
         await _ensureHlsSession();
@@ -687,8 +707,18 @@ class PlayerEngine extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 转码书：点到新章节时重新尝试一次 AAC 缓存模式。
+  /// 修复：上一次尝试失败降级到 HLS 后，旧逻辑会把整本书锁死在 HLS 慢通道
+  /// （本地缓存不被使用、也不预取新集）——这正是"缓存了却要等十几秒"的根因。
+  void _retryAacForTrack(int ti) {
+    if (ti < 0 || ti >= tracks.length) return;
+    final t = tracks[ti];
+    if (codecNeedsTranscode(t.codec, t.mimeType)) _aacMode = true;
+  }
+
   Future<void> playAt(int ti) async {
     if (ti < 0 || ti >= tracks.length) return;
+    _retryAacForTrack(ti);
     if (hlsMode) {
       await seekAbsolute(tracks[ti].startOffset + 0.01);
     } else {
@@ -699,6 +729,7 @@ class PlayerEngine extends ChangeNotifier {
 
   Future<void> nextTrack({bool userInitiated = false}) async {
     if (!hasBook || tracks.isEmpty) return;
+    _retryAacForTrack(min(index + 1, tracks.length - 1));
     if (hlsMode) {
       final ni = min(index + 1, tracks.length - 1);
       await seekAbsolute(tracks[ni].startOffset + 0.01);
@@ -710,6 +741,7 @@ class PlayerEngine extends ChangeNotifier {
 
   Future<void> prevTrack() async {
     if (!hasBook || tracks.isEmpty) return;
+    _retryAacForTrack(max(index - 1, 0));
     if (hlsMode) {
       final pi = max(index - 1, 0);
       await seekAbsolute(tracks[pi].startOffset + 0.01);
@@ -756,6 +788,9 @@ class PlayerEngine extends ChangeNotifier {
     if (!hasBook || tracks.isEmpty) return;
     final tgt = abs.clamp(0.0, max(0.0, duration - 1)).toDouble();
     _absolute = tgt;
+    // 跨到新章节时重试 AAC 缓存模式（同章节内拖动不打扰当前状态）
+    final tiCross = _trackIndexForAbsolute(tgt);
+    if (tiCross != index) _retryAacForTrack(tiCross);
     if (hlsMode) {
       await player.seek(Duration(milliseconds: (tgt * 1000).round()));
       index = _trackIndexForAbsolute(tgt);
@@ -848,6 +883,7 @@ class PlayerEngine extends ChangeNotifier {
     }
     if (index < tracks.length - 1) {
       _usedFallback = false;
+      _retryAacForTrack(index + 1);
       await _playTrackIndex(index + 1);
     } else {
       await syncNow();

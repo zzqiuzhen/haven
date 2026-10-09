@@ -107,13 +107,13 @@ class CacheManager extends ChangeNotifier {
 
   static int _be32(List<int> b, int o) => (b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3];
 
-  /// MP4/m4a 完整性粗验：按 box 声明尺寸走链，检查 moov 是否存在、box 是否越界
+  /// MP4/m4a 完整性校验：按 box 声明尺寸走链，检查 moov 是否存在、box 是否越界（截断必拒）
   static bool _mp4LooksComplete(RandomAccessFile raf, int fileLen) {
     try {
       var off = 0;
       var sawMoov = false;
       var guard = 0;
-      while (off + 8 <= fileLen && guard++ < 256) {
+      while (off + 8 <= fileLen && guard++ < 16384) {
         raf.setPositionSync(off);
         final hdr = raf.readSync(16);
         if (hdr.length < 8) break;
@@ -139,8 +139,8 @@ class CacheManager extends ChangeNotifier {
         if (size < headerLen) return false;
         final next = off + size;
         if (next > fileLen) {
-          // box 越界：moov 已见过（faststart）时容忍，否则视为截断
-          return sawMoov;
+          // box 越界 = 文件截断（无法完整解析）→ 判为无效，触发续传/重下
+          return false;
         }
         off = next;
       }
@@ -153,6 +153,31 @@ class CacheManager extends ChangeNotifier {
   bool _validateFileContent(File f, int len) {
     final memo = _okFiles[f.path];
     if (memo == len) return true; // 本会话已校验过且尺寸未变
+    // 新版 .done 带字节数戳记：尺寸一致 + 头部魔数即可（播放路径毫秒级，不再全文件走链）
+    final stamp = _doneStampedSize(f);
+    if (stamp != null) {
+      if (stamp != len) {
+        debugPrint('缓存文件尺寸与完成标记不符（疑似截断）: ${f.path}');
+        return false;
+      }
+      RandomAccessFile? rafS;
+      try {
+        rafS = f.openSync();
+        final head = rafS.readSync(24);
+        final sniff = _sniffExt(head);
+        if (sniff == null) return false;
+        _okFiles[f.path] = len;
+        _sniffedExt[f.path] = sniff;
+        return true;
+      } catch (e) {
+        debugPrint('缓存校验读取异常（不删除）: $e');
+        return true;
+      } finally {
+        try {
+          rafS?.closeSync();
+        } catch (_) {}
+      }
+    }
     RandomAccessFile? raf;
     try {
       raf = f.openSync();
@@ -177,6 +202,41 @@ class CacheManager extends ChangeNotifier {
       try {
         raf?.closeSync();
       } catch (_) {}
+    }
+  }
+
+  /// 下载完成时的强校验：头部魔数 + m4a 全量走链（截断必拒；guard 足以覆盖超长文件）
+  static bool _strictContentOk(File f) {
+    try {
+      final len = f.lengthSync();
+      if (len < 4096) return false;
+      final raf = f.openSync();
+      try {
+        final head = raf.readSync(24);
+        final sniff = _sniffExt(head);
+        if (sniff == null) return false;
+        if (sniff == '.m4a' && !_mp4LooksComplete(raf, len)) return false;
+        return true;
+      } finally {
+        raf.closeSync();
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 读取 .done 里记录的完整字节数（无戳记的旧标记返回 null）
+  int? _doneStampedSize(File dataFile) {
+    try {
+      final base = p.basenameWithoutExtension(dataFile.path);
+      final done = File(p.join(p.dirname(dataFile.path), '$base.done'));
+      if (!done.existsSync()) return null;
+      final txt = done.readAsStringSync();
+      final nl = txt.indexOf('\n');
+      if (nl < 0) return null;
+      return int.tryParse(txt.substring(nl + 1).trim());
+    } catch (_) {
+      return null;
     }
   }
 
@@ -238,6 +298,23 @@ class CacheManager extends ChangeNotifier {
     } catch (e) {
       debugPrint('缓存改名失败（保留原名）: $e');
       return null;
+    }
+  }
+
+  /// 缓存目录快照（诊断上报用：前 N 个文件名的简要列表）
+  String dirSnippet(String bookId, {int max = 12}) {
+    if (_root == null) return '';
+    try {
+      final dir = Directory(p.join(_root!.path, bookId));
+      if (!dir.existsSync()) return 'nocache';
+      final names = <String>[];
+      for (final f in dir.listSync()) {
+        if (f is File && names.length < max) names.add(p.basename(f.path));
+      }
+      names.sort();
+      return names.isEmpty ? 'empty' : names.join(',');
+    } catch (_) {
+      return 'err';
     }
   }
 
@@ -339,10 +416,12 @@ class CacheManager extends ChangeNotifier {
           if (total > 0) t.total = total.toDouble();
         }, resume: true);
         if (n <= 0) throw ApiException('下载内容为空');
-        if (t.total > 0 && n < t.total) throw ApiException('下载不完整（$n/${t.total}），续传重试');
+        if (t.total > 0 && n < t.total) throw ApiException('下载不完整（$n/${t.total}）');
+        // 强校验：截断/损坏文件绝不写入完成标记（保留 .part 续传补齐；chunked 响应也不例外）
+        if (!_strictContentOk(part)) throw ApiException('文件校验未通过，续传补齐后重试');
         if (f.existsSync()) await f.delete();
         await part.rename(f.path);
-        await _doneFile(t.bookId, t.ino).writeAsString(DateTime.now().toIso8601String());
+        await _doneFile(t.bookId, t.ino).writeAsString('${DateTime.now().toIso8601String()}\n$n');
         t.state = 'done';
         _sizes.remove(t.bookId);
         _cachedInos.putIfAbsent(t.bookId, () => <String>{}).add(t.ino);
