@@ -48,8 +48,11 @@ class PlayerEngine extends ChangeNotifier {
   bool _lastSourceDirect = false;
   bool _usedFallback = false;
   bool? _directOk; // 直连可用性：null=未验证 / true=可用 / false=不可用（本次运行内有效）
-  final Set<String> _directBadInos = {}; // 直连打不开的具体章节（内容原因），跳过直连走服务端
+  final Set<String> _directBadInos = {}; // 直连打不开的具体章节（CDN attachment 等），跳过直连走服务端
   int _directFailCount = 0;
+  int _loadSeq = 0; // 加载序号：后发加载取代先发，先发的失败/中断静默忽略
+  bool _loading = false; // 是否有加载请求在途（错误流事件在此期间交给 catch 统一处理）
+  bool _recovering = false; // 回退重试单飞锁，杜绝多重回退互相打断
   Uri? _artUri;
   DateTime _lastNotify = DateTime.now();
   DateTime _lastMeRefresh = DateTime.fromMillisecondsSinceEpoch(0);
@@ -195,7 +198,9 @@ class PlayerEngine extends ChangeNotifier {
       }
       unawaited(_ensureArt());
     } catch (e) {
-      error = '$e';
+      if (!'$e'.contains('nterrupte')) {
+        error = '$e';
+      }
       debugPrint('open book failed: $e');
     }
     loading = false;
@@ -381,6 +386,20 @@ class PlayerEngine extends ChangeNotifier {
     if (_directFailCount >= 2) _directOk = false; // 多次失败视为网络层不可达，本次运行不再尝试直连
   }
 
+  /// 回退到服务端地址重试（单飞：同一时间只允许一个回退重试在途）
+  Future<void> _recoverToServer(Track t, {required double inTrack, required bool autoplay, required bool wasDirect}) async {
+    if (_recovering || _closing) return;
+    _recovering = true;
+    try {
+      _usedFallback = true;
+      if (wasDirect) _markDirectFailed(t);
+      debugPrint('回退服务端重试: ${t.title}');
+      await _playTrackIndex(index, inTrack: inTrack, autoplay: autoplay, forceProxy: true);
+    } finally {
+      _recovering = false;
+    }
+  }
+
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false}) {
     final t = tracks[ti];
     final ext = t.ext.isNotEmpty ? t.ext : '.mp3';
@@ -413,26 +432,40 @@ class PlayerEngine extends ChangeNotifier {
     _lastSourceDirect = !forceProxy && t.path.startsWith('http') && src.url == t.path;
     var pos = inTrack;
     if (ti == 0 && settings.skipIntro > 0 && pos < 1) pos = settings.skipIntro.toDouble();
+    final mySeq = ++_loadSeq;
+    _loading = true;
     try {
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(src.url), headers: src.headers),
         initialPosition: Duration(milliseconds: (pos * 1000).round()),
       ).timeout(const Duration(seconds: 10));
+    } on PlayerInterruptedException {
+      // 被更新的加载请求取代：正常切换流程，静默忽略
+      debugPrint('加载被新请求取代（忽略）');
+      return;
     } catch (e) {
+      final msg = '$e';
+      if (msg.contains('nterrupte')) {
+        // 兼容以字符串形式出现的 Loading interrupted（被更新的加载取代）
+        debugPrint('加载被取代（忽略）: $msg');
+        return;
+      }
       debugPrint('setAudioSource 失败: $e');
-      if (!forceProxy) {
-        if (_lastSourceDirect) _markDirectFailed(t);
+      if (mySeq != _loadSeq) return; // 已有更新的加载在跑，交给它处理
+      if (!forceProxy && !_usedFallback) {
         final fb = _fallbackUrlFor(t);
         if (fb != null) {
-          debugPrint('回退服务端代理重试');
-          await _playTrackIndex(ti, inTrack: inTrack, autoplay: autoplay, forceProxy: true);
+          await _recoverToServer(t, inTrack: inTrack, autoplay: autoplay, wasDirect: _lastSourceDirect);
           return;
         }
       }
       error = '无法播放：$e';
       notifyListeners();
       return;
+    } finally {
+      if (mySeq == _loadSeq) _loading = false;
     }
+    if (mySeq != _loadSeq) return; // 已被更新的加载取代，别覆盖它的状态
     if (_lastSourceDirect) _directOk = true;
     error = null;
     _reportMediaItem();
@@ -616,17 +649,17 @@ class PlayerEngine extends ChangeNotifier {
 
   void _onPlayerError(Object e) async {
     if (_closing) return;
+    // 被更新的加载取代产生的“中断”不是真错误，静默忽略
+    if (e is PlayerInterruptedException || '$e'.contains('nterrupte')) return;
+    // 加载在途时错误交给 _playTrackIndex 的 catch 统一处理（防止双重回退竞态）
+    if (_loading || _recovering) return;
     final t = track;
     debugPrint('player error: $e');
-    if (!_usedFallback && !isTranscode && t != null) {
+    if (!_usedFallback && !isTranscode && t != null && _lastSourceDirect) {
       final fb = _fallbackUrlFor(t);
       if (fb != null) {
-        _usedFallback = true;
-        if (_lastSourceDirect) _markDirectFailed(t);
-        debugPrint('播放失败，回退服务端代理重试: $e');
-        // 按“出错前是否在播放”决定是否继续播放，避免用户手动暂停后又被自动拉起
-        final wasPlaying = player.playing;
-        await _playTrackIndex(index, inTrack: player.position.inMilliseconds / 1000.0, autoplay: wasPlaying, forceProxy: true);
+        await _recoverToServer(t,
+            inTrack: player.position.inMilliseconds / 1000.0, autoplay: player.playing, wasDirect: true);
         return;
       }
     }
@@ -749,14 +782,30 @@ class PlayerEngine extends ChangeNotifier {
 
   // ---------------- 预取 / 预热 ----------------
 
-  /// 预热某章：让服务端提前解析 302 直链（取 2 字节）；直连可用时顺手预热 CDN
+  /// 预热某章：直连可用时先走直连预热（顺带预检 CDN 是否会返回 attachment——
+  /// 这类文件 AVPlayer 会拒播，提前拉黑避免用户点击时中断）；否则走服务端预热。
   Future<void> warmTrack(int ti) async {
     if (ti < 0 || ti >= tracks.length) return;
     final t = tracks[ti];
     try {
-      if (settings.directMode && _directOk == true && !_directBadInos.contains(t.ino) && t.path.startsWith('http')) {
-        await api.warm(t.path);
-      } else if (t.contentUrl != null && t.contentUrl!.isNotEmpty) {
+      final canTryDirect = settings.directMode &&
+          _directOk != false &&
+          !_directBadInos.contains(t.ino) &&
+          t.path.startsWith('http');
+      if (canTryDirect) {
+        final r = await api.warm(t.path);
+        if (r != null) {
+          if (_directOk == null) _directOk = true;
+          final cd = (r.headers.value('content-disposition') ?? '').toLowerCase();
+          if (cd.contains('attachment')) {
+            _directBadInos.add(t.ino);
+            debugPrint('直连预检：CDN 返回 attachment，跳过直连: ${t.title}');
+          }
+          return;
+        }
+        // 直连预热失败（不可达/超时）：继续做服务端预热
+      }
+      if (t.contentUrl != null && t.contentUrl!.isNotEmpty) {
         await api.warm(api.fullTrackUrl(t.contentUrl!));
       } else if (item != null && t.ino.isNotEmpty) {
         await api.warm(api.fileUrlFor(item!.id, t.ino));

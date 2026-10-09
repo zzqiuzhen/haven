@@ -264,16 +264,19 @@ class Api {
   /// 轨道文件直链（无需会话即可访问，用于预取）
   String fileUrlFor(String itemId, String ino) => url('/api/items/$itemId/file/$ino');
 
-  /// 预热：取 2 字节，触发服务端提前解析 MP 302 并缓存直链（也顺带预热 CDN 连接）
-  Future<void> warm(String trackUrl) async {
+  /// 预热：取 2 字节，触发服务端提前解析 MP 302 并缓存直链（也顺带预热 CDN 连接）；
+  /// 返回最终响应（供直连预检读取 content-disposition，判断该文件能否被 AVPlayer 直接播放）
+  Future<Response?> warm(String trackUrl) async {
     try {
-      await dio.get(trackUrl,
+      return await dio.get(trackUrl,
           options: Options(
             headers: {...authHeaders, 'Range': 'bytes=0-1'},
             responseType: ResponseType.bytes,
             receiveTimeout: const Duration(seconds: 20),
           ));
-    } catch (_) {}
+    } catch (_) {
+      return null;
+    }
   }
 
   /// 快速探测 URL 是否可达（用于决定是否走“极速直连”；1.2 秒超时、不跟随跳转）
