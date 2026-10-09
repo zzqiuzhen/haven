@@ -66,6 +66,7 @@ class BottomDock extends StatelessWidget {
           children: [
             if (showMini) ...[
               GestureDetector(
+                behavior: HitTestBehavior.opaque, // 整条小条（含文字/封面/进度环/空白处）都可点开全屏播放页；仅播放键保留暂停功能
                 onTap: () => Navigator.of(context).push(PlayerPage.route()),
                 onLongPress: () => _showActions(context, engine),
                 child: Padding(
