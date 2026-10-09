@@ -21,6 +21,7 @@ class _HomeSettingsPageState extends State<HomeSettingsPage> {
     'continue': ('继续收听', '最近在听的书籍，横向滑动', Icons.play_circle_outline),
     'stats': ('聆听数据', '今日 / 本周 / 连续 / 累计统计', Icons.insights_outlined),
     'new': ('最新入库', '最近添加的书籍封面墙', Icons.fiber_new_outlined),
+    'cats': ('我的分类', '自定义分类书架，横向胶囊', Icons.category_outlined),
     'libs': ('我的书库', '各书库入口列表', Icons.library_books_outlined),
   };
 

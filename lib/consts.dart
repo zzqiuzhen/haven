@@ -3,8 +3,8 @@ library;
 
 /// App 显示名
 const kAppName = 'Haven';
-const kAppVersion = '1.4.9';
-const kUserAgent = 'Haven/1.4.9 (iOS; Audiobookshelf Client)';
+const kAppVersion = '1.5.0';
+const kUserAgent = 'Haven/1.5.0 (iOS; Audiobookshelf Client)';
 
 /// 播放默认设置
 class PlayDefaults {

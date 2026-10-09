@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../util.dart';
 import '../widgets/common.dart';
 import 'book_page.dart';
+import 'categories_page.dart';
 import 'player_page.dart';
 import 'recent_page.dart';
 import 'search_page.dart';
@@ -74,6 +75,8 @@ Widget _module(String id, AppState app) {
       return _StatsSection(stats: app.stats);
     case 'new':
       return _NewSection(app: app);
+    case 'cats':
+      return _CatsSection(app: app);
     case 'libs':
       return _LibSection(app: app);
   }
@@ -352,6 +355,55 @@ class _LibSection extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+
+class _CatsSection extends StatelessWidget {
+  const _CatsSection({required this.app});
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final cats = app.bookCategories;
+    if (cats.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader('我的分类', onMore: () => Navigator.of(context).push(CategoriesPage.route())),
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: cats.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              final name = cats.keys.elementAt(i);
+              final count = cats[name]!.length;
+              return GestureDetector(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CategoryBooksPage(name: name))),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: R.pill,
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.category_outlined, size: 16, color: C.primary),
+                    const SizedBox(width: 6),
+                    Text(name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 6),
+                    Text('$count', style: const TextStyle(fontSize: 12, color: C.text2)),
+                  ]),
+                ),
+              );
+            },
           ),
         ),
       ],

@@ -392,4 +392,37 @@ class AppState extends ChangeNotifier {
     await settings.clearRecentSearches();
     notifyListeners();
   }
+
+  // ---- 自定义分类 ----
+  Map<String, List<String>> get bookCategories => settings.bookCategories;
+
+  Future<void> addCategory(String name) async {
+    await settings.addCategory(name);
+    notifyListeners();
+  }
+
+  Future<void> renameCategory(String o, String n) async {
+    await settings.renameCategory(o, n);
+    notifyListeners();
+  }
+
+  Future<void> removeCategory(String name) async {
+    await settings.removeCategory(name);
+    notifyListeners();
+  }
+
+  Future<void> toggleBookCategory(String cat, String bookId) async {
+    await settings.toggleBookCategory(cat, bookId);
+    notifyListeners();
+  }
+
+  /// 在所有已加载书库中按 id 找书
+  LibItem? itemById(String id) {
+    for (final l in libItems.values) {
+      for (final it in l) {
+        if (it.id == id) return it;
+      }
+    }
+    return null;
+  }
 }

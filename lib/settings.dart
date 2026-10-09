@@ -130,7 +130,7 @@ class Settings {
   }
 
   // ---- 发现页模块（显隐与排序）----
-  static const List<String> homeModuleIds = ['continue', 'stats', 'new', 'libs'];
+  static const List<String> homeModuleIds = ['continue', 'stats', 'new', 'cats', 'libs'];
 
   List<(String, bool)> get homeModules {
     try {
@@ -157,6 +157,55 @@ class Settings {
 
   Future<void> setHomeModules(List<(String, bool)> v) async {
     await _sp.setString('home_modules', jsonEncode([for (final m in v) {'id': m.$1, 'on': m.$2}]));
+  }
+
+  // ---- 自定义分类（分类名 -> 书籍 id 列表）----
+  Map<String, List<String>> get bookCategories {
+    try {
+      final raw = _sp.getString('book_categories');
+      if (raw == null || raw.isEmpty) return const {};
+      final m = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      final out = <String, List<String>>{};
+      m.forEach((k, v) {
+        if (v is List) out[k] = v.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+      });
+      return out;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> _setCategories(Map<String, List<String>> c) => _sp.setString('book_categories', jsonEncode(c));
+
+  Future<void> addCategory(String name) async {
+    final c = Map<String, List<String>>.from(bookCategories);
+    c.putIfAbsent(name, () => <String>[]);
+    await _setCategories(c);
+  }
+
+  Future<void> renameCategory(String oldName, String newName) async {
+    final c = Map<String, List<String>>.from(bookCategories);
+    final books = c.remove(oldName) ?? <String>[];
+    c[newName] = books;
+    await _setCategories(c);
+  }
+
+  Future<void> removeCategory(String name) async {
+    final c = Map<String, List<String>>.from(bookCategories);
+    c.remove(name);
+    await _setCategories(c);
+  }
+
+  Future<void> toggleBookCategory(String catName, String bookId) async {
+    final c = Map<String, List<String>>.from(bookCategories);
+    final list = c.putIfAbsent(catName, () => <String>[]);
+    if (list.contains(bookId)) {
+      list.remove(bookId);
+    } else {
+      list.add(bookId);
+    }
+    if (list.isEmpty) c.remove(catName);
+    await _setCategories(c);
   }
 
   // ---- 书签本地索引（书库页全局书签用）----

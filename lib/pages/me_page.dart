@@ -15,6 +15,7 @@ import '../cache_manager.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'downloads_page.dart';
+import 'categories_page.dart';
 import 'recent_page.dart';
 import 'settings_home_page.dart';
 import 'settings_nav_page.dart';
@@ -92,6 +93,9 @@ class MePage extends StatelessWidget {
             }),
             _MenuItem(Icons.dashboard_customize_outlined, C.teal, '发现页设置', '模块显示与排序', () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HomeSettingsPage()));
+            }),
+            _MenuItem(Icons.category_outlined, C.purple, '自定义分类', '把书归入探险 / 科幻 / 悬疑等分类', () {
+              Navigator.of(context).push(CategoriesPage.route());
             }),
             _MenuItem(Icons.view_week_outlined, C.primary, '任务栏设置', '底部按钮显隐 / 仅图标', () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NavSettingsPage()));

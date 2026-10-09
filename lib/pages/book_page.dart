@@ -151,6 +151,73 @@ class _BookPageState extends State<BookPage> {
     showBookmarkSheet(context: context, api: app.api, item: widget.item, engine: engine);
   }
 
+  void _categorySheet() {
+    final item = widget.item;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Consumer<AppState>(
+          builder: (ctx, app, _) {
+            final cats = app.bookCategories;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('加入分类', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 10),
+                  if (cats.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 4),
+                      child: Text('还没有分类，先新建一个', style: TextStyle(fontSize: 13, color: C.text2)),
+                    ),
+                  for (final k in cats.keys)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: Text(k, style: const TextStyle(fontSize: 14.5)),
+                      value: cats[k]!.contains(item.id),
+                      onChanged: (_) => app.toggleBookCategory(k, item.id),
+                    ),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('新建分类'),
+                      onPressed: () async {
+                        final name = await _promptCategoryName(ctx);
+                        if (name != null && name.isNotEmpty) await app.addCategory(name);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _promptCategoryName(BuildContext ctx) {
+    final ctl = TextEditingController();
+    return showDialog<String>(
+      context: ctx,
+      builder: (d) => AlertDialog(
+        title: const Text('新建分类'),
+        content: TextField(controller: ctl, autofocus: true, decoration: const InputDecoration(hintText: '例如：探险、科幻、悬疑')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(d, ctl.text.trim()), child: const Text('确定')),
+        ],
+      ),
+    );
+  }
+
   /// 固定的「章节」栏：章节标题 + 分组快速切换（上滑时钉在顶部，仅下方列表滚动）
   static const double _chapterRowH = 50; // 标题行固定高（防与首行重合）
   static const double _chapterChipsH = 38; // 分组标签行固定高
@@ -205,7 +272,7 @@ class _BookPageState extends State<BookPage> {
                   },
                 ),
               ),
-            Container(height: 1, color: dark ? C.dLine : C.line),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -282,6 +349,14 @@ class _BookPageState extends State<BookPage> {
                                 context: context,
                                 builder: (_) => SafeArea(
                                   child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.category_outlined, color: C.purple),
+                                      title: const Text('加入分类…'),
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        _categorySheet();
+                                      },
+                                    ),
                                     ListTile(
                                       leading: const Icon(Icons.refresh, color: C.primary),
                                       title: const Text('刷新书籍信息'),
@@ -394,7 +469,7 @@ class _BookPageState extends State<BookPage> {
               SliverPersistentHeader(
                 pinned: true,
                 delegate: _ChapterHeaderDelegate(
-                  height: MediaQuery.of(context).padding.top + 51 + ((d != null && d.tracks.length > 100) ? 38 : 0),
+                  height: MediaQuery.of(context).padding.top + 50 + ((d != null && d.tracks.length > 100) ? 46 : 8),
                   child: _chapterHeader(context, dark, d),
                 ),
               ),
