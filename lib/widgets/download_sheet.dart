@@ -159,24 +159,22 @@ void showCustomRangeDialog(BuildContext context, LibItem item, BookDetail d, {re
 void enqueueCacheRange(BuildContext context, LibItem item, BookDetail d, List<int> idx) {
   final cache = context.read<CacheManager>();
   final app = context.read<AppState>();
-  var n = 0, skipped = 0;
+  var n = 0;
   for (final i in idx) {
     if (i < 0 || i >= d.tracks.length) continue;
     final t = d.tracks[i];
     if (t.ino.isEmpty) continue;
-    if (codecNeedsTranscode(t.codec, t.mimeType)) {
-      skipped++;
-      continue;
-    }
-    final url = app.api.fileUrlFor(item.id, t.ino);
+    final isTrans = codecNeedsTranscode(t.codec, t.mimeType);
+    final url = isTrans
+        ? app.api.transcodedFileUrlFor(item.id, t.ino)
+        : app.api.fileUrlFor(item.id, t.ino);
     cache.enqueue(
       bookId: item.id,
       ino: t.ino,
-      ext: CacheManager.mediaExt(ext: t.ext, mimeType: t.mimeType, codec: t.codec),
+      ext: isTrans ? '.m4a' : CacheManager.mediaExt(ext: t.ext, mimeType: t.mimeType, codec: t.codec),
       url: url,
     );
     n++;
   }
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(skipped > 0 ? '已加入缓存队列（$n 章）· $skipped 章为转码书暂不支持' : '已加入缓存队列（$n 章）')));
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已加入缓存队列（$n 章）')));
 }
