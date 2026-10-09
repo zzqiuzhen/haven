@@ -47,6 +47,9 @@ class PlayerEngine extends ChangeNotifier {
   bool _queueReported = false;
   bool _lastSourceDirect = false;
   bool _usedFallback = false;
+  bool? _directOk; // 直连可用性：null=未验证 / true=可用 / false=不可用（本次运行内有效）
+  final Set<String> _directBadInos = {}; // 直连打不开的具体章节（内容原因），跳过直连走服务端
+  int _directFailCount = 0;
   Uri? _artUri;
   DateTime _lastNotify = DateTime.now();
   DateTime _lastMeRefresh = DateTime.fromMillisecondsSinceEpoch(0);
@@ -236,14 +239,16 @@ class PlayerEngine extends ChangeNotifier {
   Future<void> _startAt(double abs, {bool autoplay = true}) async {
     if (tracks.isEmpty) return;
     error = null;
+    _usedFallback = false;
     if (isTranscode) {
       if (session == null) {
         error = '转码会话创建失败，请检查网络后重试';
         notifyListeners();
         return;
       }
-      // HLS 冷启动预热：服务端转码器需先拉起源文件（首个分片就绪前请求会 404），
-      // 直接交给播放器会因分片 404 报错；这里轮询等待首个分片可用（最长约 60 秒）
+      // HLS 冷启动预热：服务端转码器需先产出首个分片（未就绪前请求会 404），
+      // 轮询等待“播放列表中的首个真实分片”可用（不请求 output-0.ts——当续播点
+      // 非 0 时服务端会因回退请求而 Reset Transcode，把转码起点重置到 0）
       await _warmHlsStream();
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(_hlsUrl()), headers: api.authHeaders),
@@ -268,28 +273,58 @@ class PlayerEngine extends ChangeNotifier {
     return api.fullTrackUrl('/hls/${session?.id}/output.m3u8');
   }
 
-  /// 轮询等待转码首个分片就绪（HLS 冷启动；返回是否就绪）
+  /// 轮询等待 HLS 转码就绪（先取播放列表，拿首个真实分片名再探测）
   Future<bool> _warmHlsStream() async {
     final s = session;
     if (s == null) return false;
-    final segUrl = api.fullTrackUrl('/hls/${s.id}/output-0.ts');
-    for (int i = 0; i < 32; i++) {
-      if (session?.id != s.id) return false;
+    return _pollHlsReady(s.id, playlistUrl: _hlsUrl(), maxTries: 32);
+  }
+
+  Future<bool> _pollHlsReady(String sessionId, {String? playlistUrl, int maxTries = 24}) async {
+    final pl = playlistUrl ?? api.fullTrackUrl('/hls/$sessionId/output.m3u8');
+    for (int i = 0; i < maxTries; i++) {
+      if (session?.id != sessionId && _preSession?.id != sessionId) return false;
       try {
-        final r = await api.dio.get<List<int>>(
-          segUrl,
+        final r = await api.dio.get<String>(
+          pl,
           options: Options(
-            headers: {...api.authHeaders, 'Range': 'bytes=0-1'},
-            responseType: ResponseType.bytes,
-            receiveTimeout: const Duration(seconds: 15),
+            headers: api.authHeaders,
+            responseType: ResponseType.plain,
+            receiveTimeout: const Duration(seconds: 12),
           ),
         );
         final code = r.statusCode ?? 0;
-        if (code >= 200 && code < 300) return true;
+        if (code >= 200 && code < 300) {
+          final seg = _firstSegmentName(r.data ?? '');
+          if (seg != null) {
+            final sr = await api.dio.get<List<int>>(
+              api.fullTrackUrl('/hls/$sessionId/$seg'),
+              options: Options(
+                headers: {...api.authHeaders, 'Range': 'bytes=0-1'},
+                responseType: ResponseType.bytes,
+                receiveTimeout: const Duration(seconds: 15),
+              ),
+            );
+            final c = sr.statusCode ?? 0;
+            if (c >= 200 && c < 300) return true;
+          }
+        }
       } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 1800));
     }
     return false;
+  }
+
+  String? _firstSegmentName(String m3u8) {
+    for (final raw in m3u8.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty || line.startsWith('#')) continue;
+      if (line.contains('.ts')) {
+        final s = line.split('/').last.split('?').first;
+        if (s.isNotEmpty) return s;
+      }
+    }
+    return null;
   }
 
   // ---------------- 转码书预热 ----------------
@@ -298,7 +333,7 @@ class PlayerEngine extends ChangeNotifier {
   LibItem? _preItem;
   DateTime _preAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// 进入书籍详情页时调用：提前创建转码会话并触发一次分片请求，起播免等冷启动
+  /// 进入书籍详情页时调用：提前创建转码会话并触发一次播放列表请求，起播免等冷启动
   Future<void> prewarmTranscode(LibItem it) async {
     if (session != null || player.playing || _closing) return;
     if (_preSession != null && _preItem?.id == it.id) return;
@@ -307,15 +342,15 @@ class PlayerEngine extends ChangeNotifier {
       _preSession = s;
       _preItem = it;
       _preAt = DateTime.now();
-      final segUrl = api.fullTrackUrl('/hls/${s.id}/output-0.ts');
+      // 只请求播放列表做预热；不请求 output-0.ts（避免服务端误判而重置转码起点）
       unawaited(() async {
         try {
-          await api.dio.get<List<int>>(
-            segUrl,
+          await api.dio.get<String>(
+            api.fullTrackUrl('/hls/${s.id}/output.m3u8'),
             options: Options(
-              headers: {...api.authHeaders, 'Range': 'bytes=0-1'},
-              responseType: ResponseType.bytes,
-              receiveTimeout: const Duration(seconds: 30),
+              headers: api.authHeaders,
+              responseType: ResponseType.plain,
+              receiveTimeout: const Duration(seconds: 20),
             ),
           );
         } catch (_) {}
@@ -333,12 +368,31 @@ class PlayerEngine extends ChangeNotifier {
     return 0;
   }
 
+  /// 服务端回退地址：优先会话 contentUrl，其次 /file/ 直链（不依赖会话）
+  String? _fallbackUrlFor(Track t) {
+    if (t.contentUrl != null && t.contentUrl!.isNotEmpty) return api.fullTrackUrl(t.contentUrl!);
+    if (t.ino.isNotEmpty && item != null) return api.fileUrlFor(item!.id, t.ino);
+    return null;
+  }
+
+  void _markDirectFailed(Track? t) {
+    if (t != null && t.ino.isNotEmpty) _directBadInos.add(t.ino);
+    _directFailCount += 1;
+    if (_directFailCount >= 2) _directOk = false; // 多次失败视为网络层不可达，本次运行不再尝试直连
+  }
+
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false}) {
     final t = tracks[ti];
     final ext = t.ext.isNotEmpty ? t.ext : '.mp3';
-    final local = cache.completePath(item!.id, t.ino, ext);
+    // 本地缓存（带有效性校验：损坏文件自动清除并回退网络）
+    final local = cache.completePath(item!.id, t.ino, ext, validate: true);
     if (local != null) return (url: Uri.file(local).toString(), headers: const {});
-    if (!forceProxy && settings.directMode && t.path.startsWith('http')) {
+    // 极速直连（302 到 115 CDN）：仅在可用时启用
+    if (!forceProxy &&
+        settings.directMode &&
+        _directOk != false &&
+        !_directBadInos.contains(t.ino) &&
+        t.path.startsWith('http')) {
       return (url: t.path, headers: const {});
     }
     if (t.contentUrl != null && t.contentUrl!.isNotEmpty) {
@@ -356,8 +410,7 @@ class PlayerEngine extends ChangeNotifier {
     final src = _sourceForTrack(ti, forceProxy: forceProxy);
     index = ti;
     _absolute = t.startOffset + inTrack;
-    _usedFallback = false;
-    _lastSourceDirect = !forceProxy && settings.directMode && t.path.startsWith('http') && !src.url.startsWith('file:');
+    _lastSourceDirect = !forceProxy && t.path.startsWith('http') && src.url == t.path;
     var pos = inTrack;
     if (ti == 0 && settings.skipIntro > 0 && pos < 1) pos = settings.skipIntro.toDouble();
     try {
@@ -366,15 +419,21 @@ class PlayerEngine extends ChangeNotifier {
         initialPosition: Duration(milliseconds: (pos * 1000).round()),
       ).timeout(const Duration(seconds: 10));
     } catch (e) {
-      debugPrint('setAudioSource 失败，尝试回退服务端代理: $e');
-      if (!forceProxy && t.contentUrl != null && t.contentUrl!.isNotEmpty) {
-        await _playTrackIndex(ti, inTrack: inTrack, autoplay: autoplay, forceProxy: true);
-        return;
+      debugPrint('setAudioSource 失败: $e');
+      if (!forceProxy) {
+        if (_lastSourceDirect) _markDirectFailed(t);
+        final fb = _fallbackUrlFor(t);
+        if (fb != null) {
+          debugPrint('回退服务端代理重试');
+          await _playTrackIndex(ti, inTrack: inTrack, autoplay: autoplay, forceProxy: true);
+          return;
+        }
       }
       error = '无法播放：$e';
       notifyListeners();
       return;
     }
+    if (_lastSourceDirect) _directOk = true;
     error = null;
     _reportMediaItem();
     _persistPos(force: true);
@@ -404,6 +463,7 @@ class PlayerEngine extends ChangeNotifier {
     if (isTranscode) {
       await seekAbsolute(tracks[ti].startOffset + 0.01);
     } else {
+      _usedFallback = false;
       await _playTrackIndex(ti, inTrack: 0, autoplay: true);
     }
   }
@@ -414,6 +474,7 @@ class PlayerEngine extends ChangeNotifier {
       final ni = min(index + 1, tracks.length - 1);
       await seekAbsolute(tracks[ni].startOffset + 0.01);
     } else if (index < tracks.length - 1) {
+      _usedFallback = false;
       await _playTrackIndex(index + 1);
     }
   }
@@ -428,6 +489,7 @@ class PlayerEngine extends ChangeNotifier {
     if (player.position.inSeconds > 5) {
       await player.seek(Duration.zero);
     } else if (index > 0) {
+      _usedFallback = false;
       await _playTrackIndex(index - 1);
     } else {
       await player.seek(Duration.zero);
@@ -476,6 +538,7 @@ class PlayerEngine extends ChangeNotifier {
       if (ti == index && (player.processingState == ProcessingState.ready || player.processingState == ProcessingState.buffering)) {
         await player.seek(Duration(milliseconds: (inTrack * 1000).round()));
       } else {
+        _usedFallback = false;
         await _playTrackIndex(ti, inTrack: inTrack, autoplay: true);
       }
     }
@@ -544,6 +607,7 @@ class PlayerEngine extends ChangeNotifier {
       return;
     }
     if (index < tracks.length - 1) {
+      _usedFallback = false;
       await _playTrackIndex(index + 1);
     } else {
       await syncNow();
@@ -554,13 +618,17 @@ class PlayerEngine extends ChangeNotifier {
     if (_closing) return;
     final t = track;
     debugPrint('player error: $e');
-    if (!_usedFallback && _lastSourceDirect && t != null && t.contentUrl != null && !isTranscode) {
-      _usedFallback = true;
-      debugPrint('直连失败，回退服务端代理');
-      // 按“出错前是否在播放”决定是否继续播放，避免用户手动暂停后又被自动拉起
-      final wasPlaying = player.playing;
-      await _playTrackIndex(index, inTrack: player.position.inMilliseconds / 1000.0, autoplay: wasPlaying, forceProxy: true);
-      return;
+    if (!_usedFallback && !isTranscode && t != null) {
+      final fb = _fallbackUrlFor(t);
+      if (fb != null) {
+        _usedFallback = true;
+        if (_lastSourceDirect) _markDirectFailed(t);
+        debugPrint('播放失败，回退服务端代理重试: $e');
+        // 按“出错前是否在播放”决定是否继续播放，避免用户手动暂停后又被自动拉起
+        final wasPlaying = player.playing;
+        await _playTrackIndex(index, inTrack: player.position.inMilliseconds / 1000.0, autoplay: wasPlaying, forceProxy: true);
+        return;
+      }
     }
     error = '播放出错：$e';
     notifyListeners();
@@ -575,6 +643,8 @@ class PlayerEngine extends ChangeNotifier {
       // 会话缺失自愈：快速起播时后台建会话失败则重试
       if (session == null && hasBook) unawaited(_ensureSession());
       syncNow();
+      // 流水线补货：保持“后续 N 章”缓存队列持续推进
+      _warmAhead(probe: false);
     });
   }
 
@@ -679,12 +749,12 @@ class PlayerEngine extends ChangeNotifier {
 
   // ---------------- 预取 / 预热 ----------------
 
-  /// 预热某章：让服务端提前解析 302 直链（取 2 字节）；直连模式顺手预热 CDN
+  /// 预热某章：让服务端提前解析 302 直链（取 2 字节）；直连可用时顺手预热 CDN
   Future<void> warmTrack(int ti) async {
     if (ti < 0 || ti >= tracks.length) return;
     final t = tracks[ti];
     try {
-      if (settings.directMode && t.path.startsWith('http')) {
+      if (settings.directMode && _directOk == true && !_directBadInos.contains(t.ino) && t.path.startsWith('http')) {
         await api.warm(t.path);
       } else if (t.contentUrl != null && t.contentUrl!.isNotEmpty) {
         await api.warm(api.fullTrackUrl(t.contentUrl!));
@@ -694,9 +764,11 @@ class PlayerEngine extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void _warmAhead() {
+  /// 预取后续章节：[probe] 控制是否顺带做 2 字节预热请求；
+  /// 下载统一走服务端地址（本地镜像优先服务，稳定且快）。
+  void _warmAhead({bool probe = true}) {
     final it = item;
-    if (it == null) return;
+    if (it == null || tracks.isEmpty) return;
     final whole = settings.autoCacheWholeBook;
     final nextN = settings.autoCacheNext.clamp(0, 10);
     if (!whole && nextN == 0) return;
@@ -706,16 +778,9 @@ class PlayerEngine extends ChangeNotifier {
       if (nt.ino.isEmpty) continue;
       // 转码书籍（WMA 等）不支持轨道级离线缓存（服务端按需转码，无整文件可下）
       if (codecNeedsTranscode(nt.codec, nt.mimeType)) continue;
-      unawaited(warmTrack(i));
+      if (probe) unawaited(warmTrack(i));
       final ext = nt.ext.isNotEmpty ? nt.ext : '.mp3';
-      String url;
-      if (settings.directMode && nt.path.startsWith('http')) {
-        url = nt.path;
-      } else if (nt.contentUrl != null && nt.contentUrl!.isNotEmpty) {
-        url = api.fullTrackUrl(nt.contentUrl!);
-      } else {
-        url = api.fileUrlFor(it.id, nt.ino);
-      }
+      final url = (nt.contentUrl != null && nt.contentUrl!.isNotEmpty) ? api.fullTrackUrl(nt.contentUrl!) : api.fileUrlFor(it.id, nt.ino);
       cache.enqueue(bookId: it.id, ino: nt.ino, ext: ext, url: url);
     }
   }

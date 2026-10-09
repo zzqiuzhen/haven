@@ -276,22 +276,107 @@ class Api {
     } catch (_) {}
   }
 
-  /// 磁盘缓存下载（流式写盘）；完成返回实际写入字节
+  /// 快速探测 URL 是否可达（用于决定是否走“极速直连”；1.2 秒超时、不跟随跳转）
+  Future<bool> reachable(String trackUrl, {Duration timeout = const Duration(milliseconds: 1200)}) async {
+    try {
+      final r = await dio.get(trackUrl,
+          options: Options(
+            followRedirects: false,
+            validateStatus: (s) => s != null,
+            receiveTimeout: timeout,
+            sendTimeout: timeout,
+            headers: {...authHeaders, 'Range': 'bytes=0-1'},
+          ));
+      final c = r.statusCode ?? 0;
+      return c >= 200 && c < 400;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 磁盘缓存下载（断点续传 + 完整性校验；完成返回文件字节数）
+  ///
+  /// [savePath] 已存在且 [resume] 为 true 时从现有长度继续（网络抖动可续传）；
+  /// 服务器不支持 Range 时自动回退为全量重下；单次 45 秒无数据自动续传重试。
   Future<int> downloadTrack(String trackUrl, String savePath,
-      {required void Function(int received, int total) onProgress, CancelToken? cancel}) async {
+      {required void Function(int received, int total) onProgress,
+      CancelToken? cancel,
+      bool resume = true}) async {
     final f = File(savePath);
     await f.parent.create(recursive: true);
-    await dio.download(
-      trackUrl,
-      savePath,
-      options: Options(
-        followRedirects: true,
-        receiveTimeout: null,
-        headers: {...authHeaders, 'Accept-Encoding': 'identity'},
-      ),
-      cancelToken: cancel,
-      onReceiveProgress: onProgress,
-    );
-    return f.lengthSync();
+    if (!resume && await f.exists()) await f.delete();
+    var have = await f.exists() ? await f.length() : 0;
+    var total = 0;
+    Object? lastErr;
+    const maxTries = 6;
+    for (var attempt = 0; attempt < maxTries; attempt++) {
+      if (cancel?.isCancelled == true) break;
+      try {
+        final headers = <String, dynamic>{...authHeaders, 'Accept-Encoding': 'identity'};
+        if (have > 0) headers['Range'] = 'bytes=$have-';
+        final resp = await dio.get<ResponseBody>(
+          trackUrl,
+          options: Options(
+            followRedirects: true,
+            responseType: ResponseType.stream,
+            headers: headers,
+            receiveTimeout: const Duration(seconds: 45),
+          ),
+          cancelToken: cancel,
+        );
+        final code = resp.statusCode ?? 0;
+        final body = resp.data;
+        if (body == null) throw ApiException('下载失败：空响应');
+        if (code == 206) {
+          final cr = resp.headers.value('content-range') ?? '';
+          final m = RegExp(r'/(\d+)\s*$').firstMatch(cr);
+          if (m == null) throw ApiException('下载失败：缺少 Content-Range');
+          final t = int.tryParse(m.group(1)!);
+          if (t != null && t > 0) total = t;
+        } else if (code == 200) {
+          if (have > 0) {
+            // 服务器不支持断点续传：从头开始
+            await f.delete();
+            have = 0;
+          }
+          final cl = resp.headers.value('content-length');
+          final t = cl == null ? null : int.tryParse(cl);
+          if (t != null && t > 0) total = t;
+        } else if (code == 416) {
+          await f.delete();
+          have = 0;
+          lastErr = ApiException('响应 416，重新开始');
+          continue;
+        } else {
+          throw ApiException('下载失败 ($code)');
+        }
+        final sink = f.openWrite(mode: have > 0 ? FileMode.append : FileMode.write);
+        var got = have;
+        try {
+          await for (final chunk in body.stream) {
+            sink.add(chunk);
+            got += chunk.length;
+            onProgress(got, total);
+          }
+          await sink.flush();
+        } finally {
+          await sink.close();
+        }
+        have = await f.exists() ? await f.length() : got;
+        if (total > 0 && have >= total) return have;
+        if (total == 0 && have > 1024) return have;
+        lastErr = ApiException('连接中断（$have/${total > 0 ? total : '?'}），自动续传');
+      } on DioException catch (e) {
+        if (CancelToken.isCancel(e)) break;
+        lastErr = _conv(e);
+      } catch (e) {
+        lastErr = e;
+      }
+      if (attempt < maxTries - 1) {
+        await Future.delayed(Duration(milliseconds: 1000 + attempt * 900));
+      }
+      have = await f.exists() ? await f.length() : 0;
+    }
+    throw lastErr is Exception ? lastErr : ApiException('下载中断');
   }
 }

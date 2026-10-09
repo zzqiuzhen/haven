@@ -21,7 +21,7 @@ class CacheTask {
   double received = 0;
   double total = 0;
   String? error;
-  bool retried = false;
+  int retries = 0;
   double get progress => total > 0 ? (received / total).clamp(0, 1) : 0;
 }
 
@@ -55,12 +55,39 @@ class CacheManager extends ChangeNotifier {
   File _dataFile(String b, String ino, String ext) => File(p.join(_root!.path, b, '$ino$ext'));
   File _doneFile(String b, String ino) => File(p.join(_root!.path, b, '$ino.done'));
 
-  /// 已完整缓存则返回本地路径
-  String? completePath(String bookId, String ino, String ext) {
+  /// 已完整缓存则返回本地路径；[validate] 为 true 时校验文件有效性（损坏自动清除并回退网络）
+  String? completePath(String bookId, String ino, String ext, {bool validate = false}) {
     if (kIsWeb || _root == null) return null;
     final f = _dataFile(bookId, ino, ext);
-    if (f.existsSync() && _doneFile(bookId, ino).existsSync()) return f.path;
-    return null;
+    if (!f.existsSync() || !_doneFile(bookId, ino).existsSync()) return null;
+    if (validate) {
+      try {
+        final len = f.lengthSync();
+        if (len < 4096) throw const FormatException('文件过小');
+        final raf = f.openSync();
+        final head = raf.readSync(16);
+        raf.closeSync();
+        if (head.isEmpty) throw const FormatException('空文件');
+        final b0 = head[0];
+        if (b0 == 0x3C || b0 == 0x7B || b0 == 0x20 || b0 == 0x0A || b0 == 0x0D) {
+          throw const FormatException('内容疑似错误页而非音频');
+        }
+      } catch (e) {
+        debugPrint('缓存文件无效，清除后重新下载: ${f.path} ($e)');
+        try {
+          f.deleteSync();
+        } catch (_) {}
+        try {
+          _doneFile(bookId, ino).deleteSync();
+        } catch (_) {}
+        try {
+          File('${f.path}.part').deleteSync();
+        } catch (_) {}
+        _cachedInos[bookId]?.remove(ino);
+        return null;
+      }
+    }
+    return f.path;
   }
 
   bool isDownloaded(String bookId, String ino) => hasMark(bookId, ino);
@@ -106,10 +133,11 @@ class CacheManager extends ChangeNotifier {
         final f = _dataFile(t.bookId, t.ino, t.ext);
         await f.parent.create(recursive: true);
         final part = File('${f.path}.part');
-        await _api.downloadTrack(t.url, part.path, onProgress: (r, total) {
+        final n = await _api.downloadTrack(t.url, part.path, onProgress: (r, total) {
           t.received = r.toDouble();
           if (total > 0) t.total = total.toDouble();
-        });
+        }, resume: true);
+        if (n <= 0) throw ApiException('下载内容为空');
         if (f.existsSync()) await f.delete();
         await part.rename(f.path);
         await _doneFile(t.bookId, t.ino).writeAsString(DateTime.now().toIso8601String());
@@ -119,13 +147,14 @@ class CacheManager extends ChangeNotifier {
         notifyListeners();
         unawaited(_enforceLimit());
       } catch (e) {
-        if (!t.retried) {
-          // 失败自动重试一次（3 秒后重新排队）
-          t.retried = true;
+        debugPrint('cache download failed: $e');
+        if (t.retries < 2) {
+          // 失败自动重试（保留 .part 续传；4 秒后重新排队）
+          t.retries += 1;
           t.state = 'queued';
           _queue.add(k);
           notifyListeners();
-          await Future.delayed(const Duration(seconds: 3));
+          await Future.delayed(const Duration(seconds: 4));
         } else {
           t.state = 'failed';
           t.error = '$e';

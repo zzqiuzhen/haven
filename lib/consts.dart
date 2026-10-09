@@ -3,7 +3,7 @@ library;
 
 /// App 显示名
 const kAppName = 'Haven';
-const kAppVersion = '1.2.2';
+const kAppVersion = '1.3.0';
 const kUserAgent = 'Haven/1.0 (iOS; Audiobookshelf Client)';
 
 /// 预置服务器（可在登录页选择或自定义）
@@ -30,7 +30,7 @@ class PlayDefaults {
   static const skipIntro = 0; // 跳过片头秒数
   static const skipOutro = 0; // 跳过片尾秒数
   static const syncInterval = 30; // 进度同步间隔（秒）
-  static const autoCacheNext = 3; // 自动缓存后续章节数
+  static const autoCacheNext = 5; // 自动缓存后续章节数（流水线补货）
   static const maxCacheGB = 10; // 缓存总大小上限（GB，0=不限）
 }
 

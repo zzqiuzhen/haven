@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'api.dart';
 import 'cache_manager.dart';
+import 'consts.dart';
 import 'models.dart';
 import 'player_engine.dart';
 import 'settings.dart';
@@ -303,11 +304,10 @@ class AppState extends ChangeNotifier {
     for (final i in [ti, ti + 1]) {
       if (i < 0 || i >= d.tracks.length) continue;
       final t = d.tracks[i];
-      if (t.path.startsWith('http') && settings.directMode) {
-        unawaited(api.warm(t.path));
-      } else if (t.ino.isNotEmpty) {
-        unawaited(api.warm(api.fileUrlFor(it.id, t.ino)));
-      }
+      if (t.ino.isEmpty) continue;
+      if (codecNeedsTranscode(t.codec, t.mimeType)) continue; // 转码书（WMA 等）无整文件可预热
+      // 预热统一走服务端：触发服务端解析 302 并缓存直链（起播时服务端已就绪）
+      unawaited(api.warm(api.fileUrlFor(it.id, t.ino)));
     }
   }
 

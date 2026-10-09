@@ -15,6 +15,7 @@ import '../player_engine.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../util.dart';
+import '../widgets/bookmark_sheet.dart';
 import '../widgets/common.dart';
 import 'downloads_page.dart';
 import 'player_page.dart';
@@ -110,9 +111,7 @@ class _BookPageState extends State<BookPage> {
       final t = d.tracks[i];
       if (t.ino.isEmpty) continue;
       if (codecNeedsTranscode(t.codec, t.mimeType)) { skipped++; continue; }
-      final url = (t.path.startsWith('http') && app.settings.directMode)
-          ? t.path
-          : app.api.fileUrlFor(widget.item.id, t.ino);
+      final url = app.api.fileUrlFor(widget.item.id, t.ino);
       cache.enqueue(bookId: widget.item.id, ino: t.ino, ext: t.ext.isNotEmpty ? t.ext : '.mp3', url: url);
       n++;
     }
@@ -191,57 +190,21 @@ class _BookPageState extends State<BookPage> {
     }
     try {
       await app.api.addBookmark(widget.item.id, engine.absolute, engine.track?.title ?? '');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书签已添加')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('书签已添加 · ${fmtDur(engine.absolute)}'),
+          action: SnackBarAction(label: '查看', onPressed: _showBookmarks),
+        ));
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('添加失败：$e')));
     }
   }
 
-  void _showBookmarks() async {
+  void _showBookmarks() {
     final app = context.read<AppState>();
-    List<Bookmark> list = [];
-    try {
-      list = await app.api.bookmarks(widget.item.id);
-    } catch (_) {}
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => SafeArea(
-          child: SizedBox(
-            height: 420,
-            child: Column(children: [
-              const Padding(padding: EdgeInsets.all(12), child: Text('书签', style: TS.title)),
-              Expanded(
-                child: list.isEmpty
-                    ? const EmptyView('暂无书签\n播放时点右上角书签图标添加', icon: Icons.bookmark_border)
-                    : ListView.builder(
-                        itemCount: list.length,
-                        itemBuilder: (_, i) {
-                          final b = list[i];
-                          return ListTile(
-                            leading: const Icon(Icons.bookmark, color: C.primary),
-                            title: Text(b.title.isEmpty ? '书签 ${i + 1}' : b.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(fmtDur(b.time)),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 20, color: C.text2),
-                              onPressed: () async {
-                                try {
-                                  await app.api.removeBookmark(widget.item.id, b.time);
-                                } catch (_) {}
-                                setSheet(() => list.removeAt(i));
-                              },
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ]),
-          ),
-        ),
-      ),
-    );
+    final engine = context.read<PlayerEngine>();
+    showBookmarkSheet(context: context, api: app.api, item: widget.item, engine: engine);
   }
 
   @override

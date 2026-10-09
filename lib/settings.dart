@@ -64,8 +64,8 @@ class Settings {
   set lockButtons(String v) => _sp.setString('lock_buttons', v);
 
   /// 极速直连（直接跟 MP 302 到 115 CDN，失败自动回退服务端代理）
-  /// 默认关：直连需要手机能访问 MoviePilot，真机在外网/蜂窝下往往不可达，走服务端代理最稳且同样快
-  bool get directMode => _sp.getBool('direct_mode') ?? false;
+  /// 默认开：起播优先走 strm302 最快；不可达/打不开会自动切服务端并在本次运行内记住
+  bool get directMode => _sp.getBool('direct_mode') ?? true;
   set directMode(bool v) => _sp.setBool('direct_mode', v);
 
   // ---- 外观 ----

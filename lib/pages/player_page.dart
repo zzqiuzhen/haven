@@ -11,6 +11,7 @@ import '../cache_manager.dart';
 import '../player_engine.dart';
 import '../theme.dart';
 import '../util.dart';
+import '../widgets/bookmark_sheet.dart';
 import '../widgets/common.dart';
 import 'book_page.dart' show BookPage;
 
@@ -349,6 +350,17 @@ class _PlayerPageState extends State<PlayerPage> {
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.bookmark_outline, color: Colors.deepOrange),
+            title: const Text('书签（查看 / 跳转）'),
+            onTap: () {
+              Navigator.pop(ctx);
+              final it = engine.item;
+              if (it != null) {
+                showBookmarkSheet(context: context, api: engine.api, item: it, engine: engine);
+              }
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.refresh, color: C.primary),
             title: const Text('重新加载当前章节'),
