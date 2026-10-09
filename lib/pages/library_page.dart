@@ -138,7 +138,7 @@ class _LibraryPageState extends State<LibraryPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 12, 6),
+            padding: const EdgeInsets.fromLTRB(20, 22, 12, 16),
             child: Row(
               children: [
                 const Text('书库', style: TS.h1),

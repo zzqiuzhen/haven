@@ -31,7 +31,7 @@ class HomePage extends StatelessWidget {
           children: [
             const _Header(),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
               child: GestureDetector(
                 onTap: () => app.setTab(2),
                 child: Glass(
@@ -83,14 +83,9 @@ class _Header extends StatelessWidget {
   const _Header();
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        const BlobBackground(height: 84),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 2),
-          child: const Text('发现', style: TS.h1),
-        ),
-      ],
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 22, 20, 16),
+      child: Text('发现', style: TS.h1),
     );
   }
 }
