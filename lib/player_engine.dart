@@ -566,6 +566,9 @@ class PlayerEngine extends ChangeNotifier {
     }());
   }
 
+  /// 诊断上报（主壳等外部模块可调用：生命周期事件黑匣子）
+  void diag(String payload) => _diag(payload);
+
   ({String url, Map<String, String> headers}) _sourceForTrack(int ti, {bool forceProxy = false, bool skipLocal = false}) {
     final t = tracks[ti];
     final allowLocal = !skipLocal && !_badLocalInos.contains(t.ino);

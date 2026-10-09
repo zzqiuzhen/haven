@@ -228,4 +228,17 @@ class Settings {
     if (search != null) await _sp.setBool('nav_show_search', search);
     if (iconsOnly != null) await _sp.setBool('nav_icons_only', iconsOnly);
   }
+
+  // ---- 后台状态持久化（锁屏/进程被杀后回前台判定直达用）----
+  int? get bgAtMs {
+    final v = _sp.getInt('bg_at_ms');
+    return (v == null || v <= 0) ? null : v;
+  }
+
+  bool get bgPlaying => _sp.getBool('bg_playing') ?? false;
+
+  Future<void> saveBgState(int ms, bool playing) async {
+    await _sp.setInt('bg_at_ms', ms);
+    await _sp.setBool('bg_playing', playing);
+  }
 }
