@@ -164,11 +164,11 @@ class BlobBackground extends StatelessWidget {
         child: Stack(children: [
           Positioned(
             right: -60, top: -80,
-            child: _blob(dark ? base.withValues(alpha: 0.10) : base.withValues(alpha: 0.16), 300),
+            child: _blob(dark ? base.withValues(alpha: 0.16) : base.withValues(alpha: 0.32), 340),
           ),
           Positioned(
             left: -80, top: 40,
-            child: _blob(dark ? C.purple.withValues(alpha: 0.06) : C.purple.withValues(alpha: 0.10), 260),
+            child: _blob(dark ? C.purple.withValues(alpha: 0.10) : C.purple.withValues(alpha: 0.22), 300),
           ),
         ]),
       ),
@@ -197,10 +197,10 @@ class AmbientBackground extends StatelessWidget {
             C.orange.withValues(alpha: 0.07),
           ]
         : [
-            const Color(0xFF97BBFF).withValues(alpha: 0.50),
-            const Color(0xFFFFC4A0).withValues(alpha: 0.42),
-            const Color(0xFFB29EFF).withValues(alpha: 0.40),
-            const Color(0xFF96E8CF).withValues(alpha: 0.40),
+            const Color(0xFF97BBFF).withValues(alpha: 0.80),
+            const Color(0xFFFFC4A0).withValues(alpha: 0.66),
+            const Color(0xFFB29EFF).withValues(alpha: 0.64),
+            const Color(0xFF96E8CF).withValues(alpha: 0.56),
           ];
     return IgnorePointer(
       child: DecoratedBox(
@@ -212,10 +212,10 @@ class AmbientBackground extends StatelessWidget {
           ),
         ),
         child: Stack(children: [
-          Positioned(left: -90, top: -80, child: _AmbientBlob(tones[0], 380)),
-          Positioned(right: -120, top: 30, child: _AmbientBlob(tones[1], 340)),
-          Positioned(right: -90, bottom: -130, child: _AmbientBlob(tones[2], 400)),
-          Positioned(left: -110, bottom: -110, child: _AmbientBlob(tones[3], 360)),
+          Positioned(left: -110, top: -100, child: _AmbientBlob(tones[0], 480)),
+          Positioned(right: -140, top: 20, child: _AmbientBlob(tones[1], 430)),
+          Positioned(right: -110, bottom: -150, child: _AmbientBlob(tones[2], 500)),
+          Positioned(left: -130, bottom: -130, child: _AmbientBlob(tones[3], 460)),
         ]),
       ),
     );
