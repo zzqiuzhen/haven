@@ -237,7 +237,8 @@ class Api {
   }
 
   Future<void> removeBookmark(String itemId, double time) async {
-    await _delete('/api/me/item/$itemId/bookmark/${time.round()}');
+    // 用精确秒数匹配（书签按浮点秒存储，round 后对不上会删不掉）
+    await _delete('/api/me/item/$itemId/bookmark/$time');
   }
 
   Future<List<Bookmark>> bookmarks(String itemId) async {

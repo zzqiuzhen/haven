@@ -415,7 +415,7 @@ class _AccountInfo extends StatefulWidget {
 }
 
 class _AccountInfoState extends State<_AccountInfo> {
-  bool _hide = false;
+  bool _hide = true; // 登录后默认隐藏服务器地址，点眯眯眼才显示
 
   Future<void> _editNickname() async {
     final app = widget.app;

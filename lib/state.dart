@@ -314,10 +314,24 @@ class AppState extends ChangeNotifier {
   Future<List<LibItem>> searchAll(String q) async {
     final out = <LibItem>[];
     final seen = <String>{};
+    final qq = q.trim().toLowerCase();
+    if (qq.isEmpty) return out;
     for (final l in libraries) {
+      // 服务端搜索（书名/系列等精确匹配）
       try {
         for (final it in await api.search(l.id, q)) {
           if (seen.add(it.id)) out.add(it);
+        }
+      } catch (_) {}
+      // 本地兜底：服务端只按书名匹配，作者/演播名需按全书库模糊扫一遍
+      try {
+        final all = (await api.items(l.id, limit: 0, sort: 'addedAt')).items;
+        for (final it in all) {
+          if (seen.contains(it.id)) continue;
+          final hay = '${it.meta.title} ${it.meta.authorText} ${it.meta.narratorText}'.toLowerCase();
+          if (hay.contains(qq)) {
+            if (seen.add(it.id)) out.add(it);
+          }
         }
       } catch (_) {}
     }
