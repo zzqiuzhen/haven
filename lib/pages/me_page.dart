@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../consts.dart';
+import '../models.dart';
 import '../state.dart';
 import '../cache_manager.dart';
 import '../theme.dart';
@@ -47,16 +48,7 @@ class MePage extends StatelessWidget {
                   children: [
                     _AvatarTap(username: me?.username ?? ''),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(me?.username ?? '未登录', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 3),
-                          Text(app.api.baseUrl, style: const TextStyle(fontSize: 11.5, color: C.text2), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ],
-                      ),
-                    ),
+                    Expanded(child: _AccountInfo(app: app, me: me)),
                     if (me?.isAdmin == true) const Pill('管理员', color: C.orange),
                   ],
                 ),
@@ -409,6 +401,63 @@ class _AvatarTapState extends State<_AvatarTap> {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+class _AccountInfo extends StatefulWidget {
+  const _AccountInfo({required this.app, required this.me});
+  final AppState app;
+  final AbsUser? me;
+  @override
+  State<_AccountInfo> createState() => _AccountInfoState();
+}
+
+class _AccountInfoState extends State<_AccountInfo> {
+  bool _hide = false;
+
+  Future<void> _editNickname() async {
+    final app = widget.app;
+    final ctl = TextEditingController(text: app.nickname ?? '');
+    final v = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('修改昵称'),
+        content: TextField(controller: ctl, autofocus: true, decoration: const InputDecoration(hintText: '输入昵称（留空恢复用户名）')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(d, ctl.text.trim()), child: const Text('保存')),
+        ],
+      ),
+    );
+    if (v != null) await app.setNickname(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final me = widget.me;
+    final nick = app.nickname;
+    final name = (nick != null && nick.isNotEmpty) ? nick : (me?.username ?? '未登录');
+    final shown = _hide ? '••••••••••••' : app.api.baseUrl;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Flexible(child: Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 6),
+          GestureDetector(onTap: _editNickname, child: const Icon(Icons.edit_outlined, size: 14, color: C.text2)),
+        ]),
+        const SizedBox(height: 3),
+        Row(children: [
+          Expanded(child: Text(shown, style: const TextStyle(fontSize: 11.5, color: C.text2), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          GestureDetector(
+            onTap: () => setState(() => _hide = !_hide),
+            child: Icon(_hide ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 15, color: C.text2),
+          ),
+        ]),
+      ],
     );
   }
 }

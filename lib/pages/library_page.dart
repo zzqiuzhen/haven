@@ -12,6 +12,7 @@ import '../widgets/common.dart';
 import '../widgets/global_bookmarks_sheet.dart';
 import '../widgets/meta_edit_sheet.dart';
 import 'book_page.dart';
+import 'search_page.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -144,6 +145,18 @@ class _LibraryPageState extends State<LibraryPage> {
               children: [
                 const Text('书库', style: TS.h1),
                 const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(SearchPage.route()),
+                  child: Glass(
+                    radius: 999,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    child: ShaderMask(
+                      shaderCallback: (r) => const LinearGradient(colors: [Color(0xFF2F80ED), Color(0xFF8B5CF6)]).createShader(r),
+                      child: const Icon(Icons.search, size: 18, color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
                 PopupMenuButton<String>(
                   initialValue: _sort,
                   onSelected: (v) {

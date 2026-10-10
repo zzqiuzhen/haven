@@ -168,9 +168,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  String? get nickname => settings.nickname;
+
+  Future<void> setNickname(String? v) async {
+    await settings.setNickname(v);
+    notifyListeners();
+  }
+
   Future<void> logout() async {
     // 先立即切到登录页（UI 即时生效），清理动作放后台，避免慢网络下“点了没反应”
     me = null;
+    // 清内存 token：否则 stopAndClose 后台 _refreshMe 会用旧 token 把 me 重新填回（“退出要点两次”根因）
+    api.token = null;
+    sharedApi?.token = null;
     continueList = [];
     libraries = [];
     itemCache.clear();

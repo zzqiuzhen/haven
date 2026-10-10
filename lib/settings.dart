@@ -33,6 +33,16 @@ class Settings {
     }
   }
 
+  String? get nickname => _sp.getString('nickname');
+  Future<void> setNickname(String? v) async {
+    final t = (v ?? '').trim();
+    if (t.isEmpty) {
+      await _sp.remove('nickname');
+    } else {
+      await _sp.setString('nickname', t);
+    }
+  }
+
   Future<void> logout() async {
     await _sp.remove('token');
   }
