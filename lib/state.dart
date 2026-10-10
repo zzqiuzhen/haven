@@ -98,6 +98,7 @@ class AppState extends ChangeNotifier {
     }
     try {
       if (settings.token != null && settings.serverUrl != null) {
+        await maybeSwitchLan(); // 内网可达优先
         api.token = settings.token;
         me = await api.me();
         serverInfo = await api.status();
@@ -113,7 +114,8 @@ class AppState extends ChangeNotifier {
     if (loggedIn) unawaited(refreshHome());
   }
 
-  Future<bool> login(String server, String username, String password) async {
+  Future<bool> login(String server, String username, String password, {String? lanServer}) async {
+    await settings.setLanServerUrl(lanServer);
     if (api.baseUrl != server) {
       api = Api(server);
       engine.api = api;
@@ -127,7 +129,43 @@ class AppState extends ChangeNotifier {
     await settings.saveLogin(server, tok, username);
     notifyListeners();
     unawaited(refreshHome());
+    unawaited(maybeSwitchLan());
     return true;
+  }
+
+
+  DateTime? _lanProbeAt;
+  bool _lanLastOk = false;
+
+  Future<bool> _lanReachable(String lan) async {
+    try {
+      final p = Api(lan);
+      return await p.reachable('$lan/healthcheck', timeout: const Duration(milliseconds: 1500));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 内网可达则切到内网地址，否则用主地址（飞牛式自动切换；结果缓存 30 秒）
+  Future<void> maybeSwitchLan() async {
+    if (settings.token == null) return; // 未登录不折腾
+    final lan = settings.lanServerUrl;
+    final ext = settings.serverUrl;
+    if (lan == null || lan.isEmpty || ext == null) return;
+    final now = DateTime.now();
+    if (_lanProbeAt == null || now.difference(_lanProbeAt!) > const Duration(seconds: 30)) {
+      _lanLastOk = await _lanReachable(lan);
+      _lanProbeAt = now;
+    }
+    final target = _lanLastOk ? lan : ext;
+    if (target == api.baseUrl) return;
+    final tok = api.token;
+    api = Api(target);
+    api.token = tok;
+    engine.api = api;
+    cache.setApi(api);
+    sharedApi = api;
+    notifyListeners();
   }
 
   Future<void> logout() async {

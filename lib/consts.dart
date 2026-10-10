@@ -2,9 +2,9 @@
 library;
 
 /// App 显示名
-const kAppName = 'Haven';
-const kAppVersion = '1.5.2';
-const kUserAgent = 'Haven/1.5.2 (iOS; Audiobookshelf Client)';
+const kAppName = 'EchoShelf';
+const kAppVersion = '1.6.0';
+const kUserAgent = 'EchoShelf/1.6.0 (iOS; Audiobookshelf Client)';
 
 /// 播放默认设置
 class PlayDefaults {

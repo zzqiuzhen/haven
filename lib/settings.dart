@@ -22,6 +22,17 @@ class Settings {
     await _sp.setString('username', username);
   }
 
+  /// 内网地址（可选）：连上家里 WiFi 时优先使用；为空则始终用主地址
+  String? get lanServerUrl => _sp.getString('lan_server_url');
+  Future<void> setLanServerUrl(String? v) async {
+    final t = (v ?? '').trim();
+    if (t.isEmpty) {
+      await _sp.remove('lan_server_url');
+    } else {
+      await _sp.setString('lan_server_url', t);
+    }
+  }
+
   Future<void> logout() async {
     await _sp.remove('token');
   }

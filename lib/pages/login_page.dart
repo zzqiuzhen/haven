@@ -16,6 +16,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _serverCtl = TextEditingController();
+  final _lanCtl = TextEditingController();
   final _userCtl = TextEditingController();
   final _passCtl = TextEditingController();
   bool _busy = false;
@@ -29,6 +30,7 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final s = context.read<AppState>().settings;
       _serverCtl.text = s.serverUrl ?? '';
+      _lanCtl.text = s.lanServerUrl ?? '';
       _userCtl.text = s.username ?? '';
     } catch (_) {}
   }
@@ -36,6 +38,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void dispose() {
     _serverCtl.dispose();
+    _lanCtl.dispose();
     _userCtl.dispose();
     _passCtl.dispose();
     super.dispose();
@@ -48,7 +51,8 @@ class _LoginPageState extends State<LoginPage> {
       _error = null;
     });
     try {
-      await app.login(_serverCtl.text.trim(), _userCtl.text.trim(), _passCtl.text);
+      final lan = _lanCtl.text.trim();
+      await app.login(_serverCtl.text.trim(), _userCtl.text.trim(), _passCtl.text, lanServer: lan.isEmpty ? null : lan);
     } catch (e) {
       setState(() => _error = '$e');
     }
@@ -74,8 +78,8 @@ class _LoginPageState extends State<LoginPage> {
               Center(
                 child: RichText(
                   text: const TextSpan(children: [
-                    TextSpan(text: 'Ha', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF1C1C1E))),
-                    TextSpan(text: 'ven', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFFC6A15B))),
+                    TextSpan(text: 'Echo', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF1C1C1E))),
+                    TextSpan(text: 'Shelf', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFFC6A15B))),
                   ]),
                 ),
               ),
@@ -88,7 +92,16 @@ class _LoginPageState extends State<LoginPage> {
                 controller: _serverCtl,
                 keyboardType: TextInputType.url,
                 autocorrect: false,
-                decoration: const InputDecoration(hintText: '例如 http://192.168.x.x:13378/audiobookshelf'),
+                decoration: const InputDecoration(hintText: '例如 http://服务器IP或域名:13378/audiobookshelf'),
+              ),
+              const SizedBox(height: 14),
+              const Text('内网地址（可选）', style: TS.sub),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _lanCtl,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                decoration: const InputDecoration(hintText: '家里 WiFi 时自动切换，例如 http://192.168.x.x:13378/audiobookshelf'),
               ),
               const SizedBox(height: 22),
               const Text('账号', style: TS.title),

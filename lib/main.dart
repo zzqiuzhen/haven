@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -81,6 +83,7 @@ class _HavenAppState extends State<HavenApp> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // 只记录状态；按要求：不再有任何"回前台自动打开播放页"的行为
       app.engine.diag('life|resumed|${_lifeStamp()}');
+      unawaited(app.maybeSwitchLan());
     }
   }
 
@@ -129,7 +132,7 @@ class _Splash extends StatelessWidget {
             child: Image.asset('assets/appicon/master.png', width: 64, height: 64),
           ),
           const SizedBox(height: 14),
-          const Text('Haven', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          const Text('EchoShelf', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
         ]),
       ),
     );
