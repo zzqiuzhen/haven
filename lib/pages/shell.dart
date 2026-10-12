@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../player_engine.dart';
@@ -116,40 +117,15 @@ class BottomDock extends StatelessWidget {
                 children: [
                   for (final e in entries)
                     Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
+                      child: _DockItem(
+                        icon: e.$1,
+                        iconActive: e.$2,
+                        label: e.$3,
+                        selected: e.$4 == app.tab,
+                        dark: dark,
+                        iconsOnly: iconsOnly,
+                        haptic: app.hapticFeedback,
                         onTap: () => app.setTab(e.$4),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              padding: EdgeInsets.symmetric(horizontal: 12, vertical: iconsOnly ? 5 : 3),
-                              decoration: BoxDecoration(
-                                color: e.$4 == app.tab
-                                    ? (dark ? C.primary.withValues(alpha: 0.18) : C.primarySoft.withValues(alpha: 0.8))
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(13),
-                              ),
-                              child: Icon(
-                                e.$4 == app.tab ? e.$2 : e.$1,
-                                size: 22,
-                                color: e.$4 == app.tab ? C.primary : C.text2,
-                              ),
-                            ),
-                            if (!iconsOnly) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                e.$3,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: e.$4 == app.tab ? C.primary : C.text2,
-                                  fontWeight: e.$4 == app.tab ? FontWeight.w600 : FontWeight.w400,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
                       ),
                     ),
                 ],
@@ -208,6 +184,102 @@ class _MiniProgress extends StatelessWidget {
         strokeWidth: 2.4,
         backgroundColor: dark ? C.dLine : const Color(0xFFE5E7EB),
         valueColor: const AlwaysStoppedAnimation(C.primary),
+      ),
+    );
+  }
+}
+
+
+/// 状态栏按钮：点击弹跳动画 + 触觉反馈
+class _DockItem extends StatefulWidget {
+  const _DockItem({
+    required this.icon,
+    required this.iconActive,
+    required this.label,
+    required this.selected,
+    required this.dark,
+    required this.iconsOnly,
+    required this.haptic,
+    required this.onTap,
+  });
+  final IconData icon;
+  final IconData iconActive;
+  final String label;
+  final bool selected;
+  final bool dark;
+  final bool iconsOnly;
+  final bool haptic;
+  final VoidCallback onTap;
+  @override
+  State<_DockItem> createState() => _DockItemState();
+}
+
+class _DockItemState extends State<_DockItem> with SingleTickerProviderStateMixin {
+  late final AnimationController _pop;
+
+  /// 弹跳：1.0 → 1.22 → 1.0（带过冲回落）
+  static final Animatable<double> _popScale = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.22).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 38),
+    TweenSequenceItem(tween: Tween(begin: 1.22, end: 1.0).chain(CurveTween(curve: Curves.easeOutBack)), weight: 62),
+  ]);
+
+  @override
+  void initState() {
+    super.initState();
+    _pop = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    if (widget.haptic) HapticFeedback.lightImpact();
+    _pop.forward(from: 0);
+    widget.onTap();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: _handleTap,
+      child: AnimatedBuilder(
+        animation: _pop,
+        builder: (context, child) => Transform.scale(scale: _popScale.evaluate(_pop), child: child),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: widget.iconsOnly ? 5 : 3),
+              decoration: BoxDecoration(
+                color: widget.selected
+                    ? (widget.dark ? C.primary.withValues(alpha: 0.18) : C.primarySoft.withValues(alpha: 0.8))
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(
+                widget.selected ? widget.iconActive : widget.icon,
+                size: 22,
+                color: widget.selected ? C.primary : C.text2,
+              ),
+            ),
+            if (!widget.iconsOnly) ...[
+              const SizedBox(height: 2),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: widget.selected ? C.primary : C.text2,
+                  fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

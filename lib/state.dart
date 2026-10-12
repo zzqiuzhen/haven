@@ -429,6 +429,12 @@ class AppState extends ChangeNotifier {
   bool get navShowDiscover => settings.navShowDiscover;
   bool get navShowLibrary => settings.navShowLibrary;
   bool get navIconsOnly => settings.navIconsOnly;
+  bool get hapticFeedback => settings.hapticFeedback;
+
+  Future<void> setHapticFeedback(bool v) async {
+    await settings.setHapticFeedback(v);
+    notifyListeners();
+  }
 
   Future<void> setNavPrefs({bool? discover, bool? library, bool? iconsOnly}) async {
     await settings.setNavPrefs(discover: discover, library: library, iconsOnly: iconsOnly);

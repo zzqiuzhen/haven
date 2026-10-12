@@ -291,6 +291,12 @@ class Settings {
   bool get navShowLibrary => _sp.getBool('nav_show_library') ?? true;
   bool get navIconsOnly => _sp.getBool('nav_icons_only') ?? false;
 
+  /// 触觉反馈（点击按钮 / 下拉手势的轻微振动）
+  bool get hapticFeedback => _sp.getBool('haptic_feedback') ?? true;
+  Future<void> setHapticFeedback(bool v) async {
+    await _sp.setBool('haptic_feedback', v);
+  }
+
   Future<void> setNavPrefs({bool? discover, bool? library, bool? iconsOnly}) async {
     if (discover != null) await _sp.setBool('nav_show_discover', discover);
     if (library != null) await _sp.setBool('nav_show_library', library);

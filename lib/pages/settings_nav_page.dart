@@ -47,13 +47,26 @@ class NavSettingsPage extends StatelessWidget {
           const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(16)),
-            child: SwitchListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-              title: const Text('仅显示图标', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              subtitle: const Text('隐藏按钮下方的文字，只保留图标', style: TextStyle(fontSize: 12, color: C.text2)),
-              value: app.navIconsOnly,
-              activeThumbColor: C.primary,
-              onChanged: (v) => app.setNavPrefs(iconsOnly: v),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: const Text('仅显示图标', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  subtitle: const Text('隐藏按钮下方的文字，只保留图标', style: TextStyle(fontSize: 12, color: C.text2)),
+                  value: app.navIconsOnly,
+                  activeThumbColor: C.primary,
+                  onChanged: (v) => app.setNavPrefs(iconsOnly: v),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: const Text('触觉反馈', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  subtitle: const Text('点击底部按钮、下拉手势时轻微振动', style: TextStyle(fontSize: 12, color: C.text2)),
+                  value: app.hapticFeedback,
+                  activeThumbColor: C.primary,
+                  onChanged: (v) => app.setHapticFeedback(v),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 10),

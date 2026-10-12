@@ -4,6 +4,7 @@ library;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 
@@ -45,14 +46,30 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
   final ValueNotifier<double> _minimizeDragN = ValueNotifier<double>(0);
   late final AnimationController _snapBack;
   double _snapFrom = 0;
+  double _glide = 0; // 释放时的惯性滑行距离（带方向）
+  bool _twoPhase = false; // 有速度 → 先惯性滑行再回弹
 
   @override
   void initState() {
     super.initState();
     playerPageOpen = true;
-    _snapBack = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    _snapBack = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
     _snapBack.addListener(() {
-      _minimizeDragN.value = _snapFrom * (1 - Curves.easeOut.transform(_snapBack.value));
+      final t = _snapBack.value;
+      if (_twoPhase) {
+        const split = 0.42;
+        if (t < split) {
+          // 惯性滑行：按释放速度继续前进并减速
+          _minimizeDragN.value = _snapFrom + _glide * Curves.easeOutQuad.transform(t / split);
+        } else {
+          // 丝滑回弹：从滑行终点弹回 0（带轻微过冲）
+          final from = _snapFrom + _glide;
+          _minimizeDragN.value = from * (1 - Curves.easeOutBack.transform((t - split) / (1 - split)));
+        }
+      } else {
+        // 无速度：丝滑回弹（easeOutBack 轻微过冲）
+        _minimizeDragN.value = _snapFrom * (1 - Curves.easeOutBack.transform(t));
+      }
     });
   }
 
@@ -64,9 +81,13 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  /// 动画平滑回弹到 0（未过阈值 / 弹出被拒 时使用）
-  void _startSnapBack() {
+  /// 丝滑回弹到 0（未过阈值 / 弹出被拒 时使用）；
+  /// [glide] 为惯性滑行距离（0 = 无速度直接回弹）
+  void _startSnapBack({double glide = 0}) {
     _snapFrom = _minimizeDragN.value;
+    _glide = glide;
+    _twoPhase = glide.abs() > 1;
+    _snapBack.duration = Duration(milliseconds: _twoPhase ? 460 : 320);
     _snapBack.forward(from: 0);
   }
 
@@ -127,15 +148,19 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
         onVerticalDragCancel: _startSnapBack,
         onVerticalDragEnd: (d) {
           final vy = d.velocity.pixelsPerSecond.dy;
-          if (_minimizeDragN.value > 110 || vy > 800) {
+          final cur = _minimizeDragN.value;
+          // 惯性投影：按 0.12s 的速度衰减估算“松手后会滑到哪”
+          final projected = cur + vy * 0.12;
+          if (cur > 110 || projected > 165 || vy > 900) {
             // 保持位移直接弹出（不要先复位——复位会先弹回一帧再退场，看起来就是“弹一下”）
+            if (engine.settings.hapticFeedback) HapticFeedback.mediumImpact();
             final nav = Navigator.of(context);
             nav.maybePop().then((ok) {
               if (!ok && mounted) _startSnapBack();
             });
           } else {
-            // 未过阈值：动画平滑回弹
-            _startSnapBack();
+            // 未过阈值：先惯性滑行一段，再丝滑回弹
+            _startSnapBack(glide: (vy * 0.12).clamp(0.0, 130.0));
           }
         },
         child: ValueListenableBuilder<double>(
