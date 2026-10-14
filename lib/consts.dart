@@ -3,8 +3,8 @@ library;
 
 /// App 显示名
 const kAppName = 'EchoShelf';
-const kAppVersion = '1.6.3';
-const kUserAgent = 'EchoShelf/1.6.3 (iOS; Audiobookshelf Client)';
+const kAppVersion = '1.6.4';
+const kUserAgent = 'EchoShelf/1.6.4 (iOS; Audiobookshelf Client)';
 
 /// 播放默认设置
 class PlayDefaults {

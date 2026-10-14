@@ -57,6 +57,8 @@ class PlayerEngine extends ChangeNotifier {
   bool _recovering = false; // 回退重试单飞锁，杜绝多重回退互相打断
   final Set<String> _badLocalInos = {}; // 本地文件加载失败的章节（本运行内不再读本地）
   String? _lastLoadUrl; // 最近一次加载的音源 URL（用于失败自愈判定）
+  double _introSkipTarget = 0; // 片头补跳目标（秒，章内）：>0=本次从片头区间起播，待首个播放位置更新时补跳
+  int _hlsIntroSkippedFor = -1; // HLS 转码书：已对哪一章执行过片头跳过（防重复 seek）
   Uri? _artUri;
   DateTime _lastNotify = DateTime.now();
   DateTime _lastMeRefresh = DateTime.fromMillisecondsSinceEpoch(0);
@@ -192,6 +194,8 @@ class PlayerEngine extends ChangeNotifier {
     index = 0;
     _absolute = 0;
     _queueReported = false;
+    _introSkipTarget = 0;
+    _hlsIntroSkippedFor = -1;
     error = null;
     loading = true;
     notifyListeners();
@@ -610,6 +614,14 @@ class PlayerEngine extends ChangeNotifier {
     return (url: t.path, headers: const {});
   }
 
+  /// 片头跳过目标（秒）：启用「跳过片头」且章节时长足够时返回秒数，否则 0
+  double _introJumpFor(Track? t) {
+    final n = settings.skipIntro;
+    if (n <= 0 || t == null) return 0;
+    if (t.duration > 0 && t.duration <= n + 5) return 0; // 章节太短，跳过会吃掉整章内容
+    return n.toDouble();
+  }
+
   Future<void> _playTrackIndex(int ti, {double inTrack = 0, bool autoplay = true, bool forceProxy = false, bool skipLocal = false}) async {
     if (ti < 0 || ti >= tracks.length) return;
     final t = tracks[ti];
@@ -635,7 +647,14 @@ class PlayerEngine extends ChangeNotifier {
     _absolute = t.startOffset + inTrack;
     _lastSourceDirect = !forceProxy && t.path.startsWith('http') && src.url == t.path;
     var pos = inTrack;
-    if (ti == 0 && settings.skipIntro > 0 && pos < 1) pos = settings.skipIntro.toDouble();
+    // 片头自动跳过（每章开头）：从片头区间起播 → 直接以片头结束点为初始位置；
+    // 同时记录补跳目标：个别流 initialPosition 不生效时，运行期首个位置更新会补一次 seek
+    final introJump = _introJumpFor(t);
+    _introSkipTarget = (introJump > 0 && inTrack < introJump) ? introJump : 0;
+    if (_introSkipTarget > 0) {
+      pos = _introSkipTarget;
+      _absolute = t.startOffset + pos;
+    }
     final mySeq = ++_loadSeq;
     _loading = true;
     // AAC 模式首播要等服务器"边转边播"的首包（修复后 1~3 秒）；30 秒容错上限
@@ -750,13 +769,15 @@ class PlayerEngine extends ChangeNotifier {
       await seekAbsolute(tracks[pi].startOffset + 0.01);
       return;
     }
+    final restartPos = _introJumpFor(track);
     if (player.position.inSeconds > 5) {
-      await player.seek(Duration.zero);
+      // 重播本章：同样跳过本章片头
+      await player.seek(Duration(milliseconds: (restartPos * 1000).round()));
     } else if (index > 0) {
       _usedFallback = false;
       await _playTrackIndex(index - 1);
     } else {
-      await player.seek(Duration.zero);
+      await player.seek(Duration(milliseconds: (restartPos * 1000).round()));
     }
   }
 
@@ -821,6 +842,31 @@ class PlayerEngine extends ChangeNotifier {
     _warmAhead();
   }
 
+  /// 立即把当前章节跳到片头结束点（用户在「跳过片头」面板选好秒数时调用，立即见效）
+  Future<void> applyIntroSkipNow() async {
+    if (!hasBook || tracks.isEmpty) return;
+    final t = track;
+    final jump = _introJumpFor(t);
+    if (jump <= 0 || t == null) return;
+    if (hlsMode) {
+      final ti = index;
+      final nextStart = (ti + 1 < tracks.length) ? tracks[ti + 1].startOffset : double.infinity;
+      final target = t.startOffset + jump;
+      if (target < nextStart - 5 && _absolute < target - 1) {
+        _hlsIntroSkippedFor = ti;
+        await seekAbsolute(target);
+      }
+    } else {
+      final cur = player.position.inMilliseconds / 1000.0;
+      if (cur < jump - 1) {
+        _introSkipTarget = 0;
+        try {
+          await player.seek(Duration(milliseconds: (jump * 1000).round()));
+        } catch (_) {}
+      }
+    }
+  }
+
   Future<void> setSpeed(double s, {bool persist = true}) async {
     await player.setSpeed(s);
     if (persist && item != null) {
@@ -849,12 +895,41 @@ class PlayerEngine extends ChangeNotifier {
         // HLS 转码书自然跨集：触发服务端窗口本地化滑动
         unawaited(warmTrack(ti));
       }
+      // 片头跳过（HLS 转码书同规则：进入某章片头区间 → 跳到片头结束）
+      if (settings.skipIntro > 0 && ti >= 0 && ti < tracks.length && _hlsIntroSkippedFor != ti) {
+        final nt = tracks[ti];
+        final jump = _introJumpFor(nt);
+        final nextStart = (ti + 1 < tracks.length) ? tracks[ti + 1].startOffset : double.infinity;
+        final target = nt.startOffset + jump;
+        if (jump > 0 && target < nextStart - 5 && pos >= nt.startOffset - 0.5 && pos < target - 0.5 && player.playing) {
+          _hlsIntroSkippedFor = ti;
+          unawaited(() async {
+            try {
+              await player.seek(Duration(milliseconds: (target * 1000).round()));
+            } catch (_) {}
+          }());
+        }
+      }
     } else {
       final t = track;
       _absolute = (t?.startOffset ?? 0) + pos;
       if (settings.skipOutro > 0 && t != null && t.duration > settings.skipOutro + 5) {
         if (pos > t.duration - settings.skipOutro && pos < t.duration - 0.5 && player.playing) {
           unawaited(nextTrack());
+        }
+      }
+      // 片头补跳保险：起播后仍停在片头区间 → 强制跳到片头结束（修个别流 initialPosition 不生效）
+      if (_introSkipTarget > 0 && t != null) {
+        if (pos >= _introSkipTarget) {
+          _introSkipTarget = 0;
+        } else if (player.playing) {
+          final tgt = _introSkipTarget;
+          _introSkipTarget = 0;
+          unawaited(() async {
+            try {
+              await player.seek(Duration(milliseconds: (tgt * 1000).round()));
+            } catch (_) {}
+          }());
         }
       }
     }

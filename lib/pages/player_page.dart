@@ -1,6 +1,7 @@
 /// 全屏播放器
 library;
 
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -564,6 +565,8 @@ class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateM
                           s.skipIntro = v;
                           setSheet(() {});
                           engine.touch();
+                          // 选好秒数立即对当前章节生效
+                          if (v > 0) unawaited(engine.applyIntroSkipNow());
                         },
                       ),
                   ],
